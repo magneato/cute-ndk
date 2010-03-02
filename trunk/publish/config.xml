@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="utf-8"?> 
+<publish>
+    <package name="soooner-vod" compress_type="tar.gz" version="3.1">
+        <!-- 发布服务器信息-->
+        <pub_svr 
+            type="ftp" 
+            host="192.168.1.47" 
+            path="pub/vod" 
+            user="cuisw" 
+            pswd="passwd" 
+            />
+        <!-- 被打包项目的信息, 可以是多个-->
+        <project 
+            name="vod" 
+            manager="cuisw" 
+            vcs="svn" 
+            vcs_user="cuisw"
+            vcs_passwd="passwd"
+            path="VOD_ROOT" 
+            edition="debug"
+            >
+            <build_cmd>make clean all</build_cmd>
+            <binary>bin/lVodsvc</binary>
+            <!-- 此项目在发布包中的目录结构，如果值为空或者.，表示不创建目录-->
+
+            <dependencies>
+                <item 
+                    name="libACE-5.6.7.so"
+                    path="/soooner/lib"
+                    />
+                <item
+                    name="logger_config.ini"
+                    path="config"
+                    />
+            </dependencies>
+        </project>
+        <project 
+            name="prepublish" 
+            manager="cuisw" 
+            vcs="svn" 
+            vcs_user="cuisw"
+            vcs_passwd="passwd"
+            path="PREPUB_ROOT" 
+            edition="debug" 
+            >
+            <build_cmd>make clean all</build_cmd>
+            <binary>bin/lVodsvc</binary>
+        </project>
+    </package>
+
+    <package name="netdkit" compress_type="tar.gz" version="1.0">
+        <pub_svr
+            type="ftp"
+            host="192.168.1.47" 
+            path="pub/vod" 
+            user="publish" 
+            pswd="!Q@W#E" 
+            />
+        <project 
+            name="netdkit" 
+            manager="shaovie" 
+            vcs="svn" 
+            vcs_user="shaovie"
+            vcs_passwd="kC7rT6WM6xZ3"
+            path="NETDKIT_ROOT"
+            edition="release"
+            >
+            <build_cmd>make clean all</build_cmd>
+            <binary>bin/libnetdkit.so:bin/libnetdkit.so.1.0</binary>
+            <dependencies>
+                <item 
+                    name="logger_config.ini"
+                    path="logger"
+                    />
+            </dependencies>
+        </project>
+    </package>
+</publish>
