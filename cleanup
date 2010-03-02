@@ -1,0 +1,1 @@
+find ndk/ -name "*~" | xargs rm -f
