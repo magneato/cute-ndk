@@ -94,8 +94,7 @@ int select_reactor_base::poll_events(const time_value *timeout)
     tv = (*timeout);
     ptv = &tv;
   }
-  int result = ::select(max_handle, rd_set, wr_set, ex_set, ptv);
-  return result;
+  return ::select(max_handle, rd_set, wr_set, ex_set, ptv);
 }
 int select_reactor_base::reset_fd_set(fd_set *&rd_set, 
                                       fd_set *&wr_set,
@@ -269,9 +268,22 @@ int select_reactor_base::reactor_mask_to_select_event(ndk_handle handle,
   }
   return 0;
 }
+int select_reactor_base::find_handle(ndk_handle handle, select_handle *sh)
+{
+  while (sh)
+  {
+    if (sh->handle == handle)
+      return 0;
+    sh = sh->next;
+  }
+  return -1;
+}
 int select_reactor_base::append_handle(ndk_handle handle, select_handle *&sh)
 {
   STRACE("");
+
+  if (this->find_handle(handle, sh) == 0) return 0;
+
   if (sh == 0)
   {
     sh = this->alloc_handle();
