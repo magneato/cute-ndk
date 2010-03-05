@@ -1,5 +1,10 @@
 #include "ndk/unix_reactor.h"
 
+#ifdef NDK_RTLOG
+# include <cstring>
+# include <cstdio>
+#endif
+
 namespace ndk
 {
 int unix_reactor_handler_repository::open(int size)
@@ -166,7 +171,12 @@ int unix_reactor::handle_events_i(const time_value *max_wait_time)
   if (result == 0)
     return 0;
   else if (result == -1 && errno != EINTR)
+  {
+#ifdef NDK_RTLOG
+    fprintf(stderr, "warning: %s\n", strerror(errno));
+#endif
     return result;
+  }
   // Dispatch an event.
   return this->dispatch_events();
 }
@@ -189,14 +199,14 @@ int unix_reactor::dispatch_events()
   return result;
 }
 int unix_reactor::register_handler_i(ndk_handle handle,
-                                      event_handler *event_handler,
-                                      reactor_mask mask)
+                                     event_handler *eh,
+                                     reactor_mask mask)
 {
   STRACE("");
   if (this->handler_rep_.find(handle) == 0)
   {
     // Handler not present in the repository.  Bind it.
-    if (this->handler_rep_.bind(handle, event_handler, mask) != 0)
+    if (this->handler_rep_.bind(handle, eh, mask) != 0)
       return -1;
     if (this->handle_opt_i(handle, mask, unix_reactor::add_mask) != 0)
     {
@@ -216,7 +226,7 @@ int unix_reactor::register_handler_i(ndk_handle handle,
   return 0;
 }
 int unix_reactor::remove_handler_i(ndk_handle handle,
-                                    reactor_mask mask)
+                                   reactor_mask mask)
 {
   STRACE("");
   event_handler *eh = this->handler_rep_.find(handle);
@@ -238,7 +248,7 @@ int unix_reactor::remove_handler_i(ndk_handle handle,
 
   // If there are no longer any outstanding events on the given handle
   // then remove it from the handler repository.
-  if (this->handler_rep_.mask(handle) == event_handler::null_mask)
+  if (new_mask == event_handler::null_mask)
     this->handler_rep_.unbind(handle);
 
   return 0;

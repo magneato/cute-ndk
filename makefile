@@ -13,7 +13,7 @@
                                BIN_DIR = ./bin
                                 TARGET = $(BIN_DIR)/libnetdkit.so.1.0
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
-                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DDUMP_INFO#-DNDK_STRACE#-DNDK_LOG_DEBUG -DDUMP_INFO
+                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG#-DNDK_STRACE
                                     CC = gcc
                             CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make
@@ -27,34 +27,36 @@
                                  VPATH = ndk
                             OBJECT_DIR = ./.obj/
                               CPPFILES = \
-                                         acceptor.cpp  \
-                                         thread.cpp  \
-                                         strace.cpp  \
-                                         sock_connector.cpp  \
-                                         log_to_file.cpp  \
-																				 logger.cpp  \
-                                         reactor.cpp  \
-                                         task.cpp  \
-                                         epoll_reactor.cpp  \
-                                         mem_pool.cpp  \
-                                         log_manager.cpp  \
-                                         connector.cpp  \
-                                         sock_acceptor.cpp  \
-																				 select_reactor.cpp  \
-                                         message_queue.cpp  \
-                                         ndk.cpp  \
-                                         token.cpp  \
-                                         timer_queue.cpp  \
-                                         thread_manager.cpp  \
-                                         inet_addr.cpp  \
-                                         time_value.cpp  \
-                                         task_base.cpp  \
                                          log_to_stdout.cpp  \
-																				 unix_reactor.cpp 
+                                         logger.cpp  \
+                                         task_base.cpp  \
+                                         cache_manager.cpp  \
+                                         timer_queue.cpp  \
+                                         thread.cpp  \
+                                         sock_acceptor.cpp  \
+                                         thread_manager.cpp  \
+                                         mem_pool.cpp  \
+                                         sock_connector.cpp  \
+                                         time_value.cpp  \
+                                         cache_heap.cpp  \
+                                         log_to_file.cpp  \
+                                         reactor.cpp  \
+                                         inet_addr.cpp  \
+                                         log_manager.cpp  \
+                                         message_queue.cpp  \
+                                         unix_reactor.cpp  \
+                                         select_reactor.cpp  \
+                                         strace.cpp  \
+                                         acceptor.cpp  \
+                                         epoll_reactor.cpp  \
+                                         task.cpp  \
+                                         ndk.cpp  \
+                                         connector.cpp  \
+                                         token.cpp   
 
                                 CFILES = \
-                                         dictionary.c  \
-                                         iniparser.c   
+                                         iniparser.c  \
+                                         dictionary.c   
 
 # To use 'make debug=0' build release edition.
 ifdef debug

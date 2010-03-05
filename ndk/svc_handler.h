@@ -10,6 +10,7 @@
 #ifndef NDK_SVC_HANDLER_H_
 #define NDK_SVC_HANDLER_H_
 
+#include "ndk/strace.h"
 #include "ndk/reactor.h"
 #include "ndk/sock_stream.h"
 #include "ndk/event_handler.h"
@@ -34,6 +35,7 @@ namespace ndk
     //
     virtual ~svc_handler()
     {
+      STRACE("");
       if (this->closed_ == 0)
       {
         this->closed_ = 1;
@@ -56,6 +58,7 @@ namespace ndk
      */
     virtual int close(int flag = 0)
     {
+      STRACE("");
       return this->handle_close(NDK_INVALID_HANDLE, flag);
     }
 
@@ -69,6 +72,7 @@ namespace ndk
     virtual int handle_close(ndk_handle = NDK_INVALID_HANDLE,
                              reactor_mask = event_handler::all_events_mask)
     {
+      STRACE("");
       this->destroy();
       return 0;
     }
@@ -96,6 +100,7 @@ namespace ndk
      */
     virtual void destroy(void)
     {
+      STRACE("");
       if (this->closed_ == 0)
       {
         // Will call the destructor, which automatically calls 
@@ -108,6 +113,7 @@ namespace ndk
     // Close down the descriptor and unregister from the reactor
     void shutdown(void)
     {
+      STRACE("");
       if (this->get_reactor())
       {
         ndk::reactor_mask mask = event_handler::all_events_mask
@@ -126,7 +132,7 @@ namespace ndk
 
     // Keeps track of whether we are in the process of closing 
     //(required to avoid circular calls to <handle_close>).
-    int closed_;
+    volatile int closed_;
   };
 } // namespace ndk
 

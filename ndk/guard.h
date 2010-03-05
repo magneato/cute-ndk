@@ -40,13 +40,33 @@ namespace ndk
 
     inline int try_acquire(void)
     { return this->mutex_.try_acquire(); }
-
-    inline lock &mutex(void)
-    { return this->mutex_; }
   private:
     lock &mutex_;
   };
   
+  /**
+   * @class guard for null_mutex
+   *
+   * @brief scoped auto lock
+   */
+  class null_thread;
+  template<>
+  class guard<null_thread>
+  {
+  public:
+    inline guard(null_thread &) { }
+
+    inline guard(const null_thread &) {  }
+      
+    inline ~guard() { }
+
+    inline void acquire(void) { }
+      
+    inline void release(void) { }
+
+    inline int try_acquire(void) { return 0; }
+  };
+
 } // namespace ndk
 #endif // NDK_GUARD_H_
 

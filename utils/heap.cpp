@@ -22,7 +22,7 @@ public:
   {
     if (this->size_ >= this->max_size_)
       return -1;
-    this->heap_[size_] = val;
+    this->heap_[this->size_] = val;
     this->shift_down(this->size_);
     ++this->size_;
     return 0;
