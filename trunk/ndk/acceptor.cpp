@@ -100,7 +100,7 @@ inline int acceptor<svc_handler>::activate_svc_handler(svc_handler *sh)
   return 0;
 }
 template<class svc_handler>
-int acceptor<svc_handler>::handle_input(ndk_handle listener)
+int acceptor<svc_handler>::handle_input(ndk_handle )
 {
   STRACE("");
   // Accept connections from clients. Note that a loop allows us to 

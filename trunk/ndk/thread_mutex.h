@@ -38,11 +38,10 @@ namespace ndk
     inline int acquire(void)
     {
       return ::pthread_mutex_lock(&this->mutex_) == 0 ? 0 : -1;
-      return 0;
     }
 
     // acquire lock ownership in <timeout> period 
-    int acquire(const time_value *timeout) 
+    inline int acquire(const time_value *timeout) 
     {
       struct timespec ts;
       ts = time_value::gettimeofday() + *timeout;
@@ -50,25 +49,44 @@ namespace ndk
     }
 
     // not block if someone already had the lock , errno is EBUSY
-    int try_acquire(void) 
+    inline int try_acquire(void) 
     {
       return ::pthread_mutex_trylock(&this->mutex_) == 0 ? 0 : -1;
     }
 
     // release lock ownership 
-    int release(void) 
+    inline int release(void) 
     {
       return ::pthread_mutex_unlock(&this->mutex_) == 0 ? 0 : -1;
-      return 0;
     }
 
     // return mutex_t
-    const pthread_mutex_t &lock() const 
-      {
-        return this->mutex_;
-      }
+    inline const pthread_mutex_t &lock() const 
+    {
+      return this->mutex_;
+    }
   private:
     pthread_mutex_t mutex_;
+  };
+  /**
+   * @class null_mutex
+   *
+   * @brief 
+   */
+  class null_mutex
+  {
+  public:
+    inline null_mutex() { }
+
+    inline ~null_mutex() { }
+
+    inline int acquire(void) { return 0; }
+
+    inline int acquire(const time_value *) { return 0; }
+
+    inline int try_acquire(void) { return 0; }
+
+    inline int release(void) { return 0; }
   };
 } // namespace ndk
 

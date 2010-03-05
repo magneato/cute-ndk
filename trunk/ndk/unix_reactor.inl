@@ -11,7 +11,7 @@ int unix_reactor_handler_repository::unbind(ndk_handle handle)
 }
 inline
 event_handler *unix_reactor_handler_repository::find(ndk_handle handle,
-                                                      size_t *index_p/* = 0*/)
+                                                     size_t *index_p/* = 0*/)
 {
   STRACE("");
   event_handler *eh = 0;
@@ -24,8 +24,8 @@ event_handler *unix_reactor_handler_repository::find(ndk_handle handle,
 }
 inline
 int unix_reactor_handler_repository::bind(ndk_handle handle,
-                                           event_handler *eh,
-                                           reactor_mask mask)
+                                          event_handler *eh,
+                                          reactor_mask mask)
 {
   STRACE("");
   if (eh == 0 || this->handlers_ == 0) return -1;
@@ -43,7 +43,7 @@ reactor_mask unix_reactor_handler_repository::mask(ndk_handle handle)
 }
 inline
 void unix_reactor_handler_repository::mask(ndk_handle handle,
-                                            reactor_mask mask)
+                                           reactor_mask mask)
 {
   if (this->handle_in_range(handle))
     this->handlers_[handle].mask_ = mask;
@@ -64,7 +64,7 @@ int unix_reactor_handler_repository::is_invalid_handle(ndk_handle handle) const
 // --------------------------------------------------------------------------
 inline
 int unix_reactor_notify::read_notify_pipe(ndk_handle ,
-                                           notification_buffer &buffer)
+                                          notification_buffer &buffer)
 {
   return ndk::read(this->notification_pipe_.read_handle(),
                    (char *)&buffer,
@@ -92,8 +92,8 @@ int unix_reactor::dispatch_timer_handler()
 }
 inline
 int unix_reactor::upcall(event_handler *eh,
-                          int (event_handler::*callback)(ndk_handle),
-                          ndk_handle handle)
+                         int (event_handler::*callback)(ndk_handle),
+                         ndk_handle handle)
 {
   return (eh->*callback)(handle);
 }

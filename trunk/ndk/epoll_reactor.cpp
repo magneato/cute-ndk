@@ -59,7 +59,8 @@ int epoll_reactor_base::poll_events(const time_value *timeout)
   int nfds = ::epoll_wait(this->epoll_fd_, 
                           this->events_, 
                           this->size_, 
-                          timeout == 0 ? -1 : static_cast<int>(timeout->msec()));
+                          timeout == 0 ?  -1 
+                          : static_cast<int>(timeout->msec()));
   if (nfds > 0)
   {
     this->start_pevents_ = this->events_;
@@ -72,7 +73,8 @@ int epoll_reactor_base::dispatch_io_events()
   STRACE("");
   struct epoll_event *& pfd = this->start_pevents_;
   int result = 0;
-  if (pfd < this->end_pevents_)
+  while (pfd < this->end_pevents_ && 
+         result < MAX_REACTOR_PROCESS_FDS_ONE_TIME)
   {
     // 
     event_handler *eh = this->handler_rep_.find(pfd->data.fd);
@@ -133,7 +135,7 @@ int epoll_reactor_base::dispatch_io_events()
 #endif
       ++pfd; 
     }
-  } // if (pfd < this->end_pevents_ ...
+  } // while (pfd < this->end_pevents_ ...
   return result;
 }
 int epoll_reactor_base::reactor_mask_to_epoll_event(reactor_mask mask)
@@ -178,20 +180,36 @@ int epoll_reactor_base::handle_opt_i(ndk_handle handle,
   {
   case unix_reactor::add_mask: 
     epev.events = this->reactor_mask_to_epoll_event(mask);
-    return ::epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD, handle, &epev);	
+    return ::epoll_ctl(this->epoll_fd_, 
+                       EPOLL_CTL_ADD, 
+                       handle, 
+                       &epev);	
   case unix_reactor::set_mask: 
     epev.events = this->reactor_mask_to_epoll_event(mask);
-    if (::epoll_ctl(this->epoll_fd_, EPOLL_CTL_MOD, handle, &epev) == -1)
+    if (::epoll_ctl(this->epoll_fd_, 
+                    EPOLL_CTL_MOD, 
+                    handle, 
+                    &epev) == -1)
     {
+#ifdef NDK_RTLOG
+      perror("epoll_ctl");
+#endif
       // If a handle is closed, epoll removes it from the poll set
       // automatically - we may not know about it yet. If that's the
       // case, a mod operation will fail with ENOENT. Retry it as
       // an add.
       if (errno == ENOENT)
-        return ::epoll_ctl(this->epoll_fd_, EPOLL_CTL_ADD, handle, &epev);
+        return ::epoll_ctl(this->epoll_fd_, 
+                           EPOLL_CTL_ADD, 
+                           handle, 
+                           &epev);
     }
+    break;
   case unix_reactor::clr_mask: 
-    return ::epoll_ctl(this->epoll_fd_, EPOLL_CTL_DEL, handle, &epev);	
+    return ::epoll_ctl(this->epoll_fd_, 
+                       EPOLL_CTL_DEL, 
+                       handle, 
+                       &epev);	
   default: return -1;
   }
   return 0;

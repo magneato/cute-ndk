@@ -1,7 +1,11 @@
 # -*- coding: utf-8 -*-
 
 import os, sys
-from termcolor import colored
+try:
+    from termcolor import colored
+except:
+    print("import 'termcolor' failed!")
+    colored = lambda x, y : x
 
 __logo__ =  \
 r"""###########################################################################
@@ -145,6 +149,8 @@ def build_c_cpp_makefile(**kargs):
     lines.append('endif')
     lines.append('ifeq ($(IS_DEBUG), 1)')
     lines.append('\tOPTIM_FLAG += -g3')
+    lines.append('else')
+    lines.append('\tMACROS += -DNDEBUG')
     lines.append('endif')
     lines.append("")
     lines.append("# To use 'make quiet=1' all the build command will be hidden.")

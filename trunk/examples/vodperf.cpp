@@ -175,6 +175,7 @@ public:
 
     std::string uri = this->fileid_.substr(p);
     os << "GET " << uri << " HTTP/1.1" << "\r\n"
+      << "Referer: http://www.keng.com" << "\r\n"
       << "User-Agent: ndk" << "\r\n"
       << "Connection: Keep-Alive" << "\r\n"
       << "Host: " << this->remote_addr_ << "\r\n"
@@ -350,6 +351,7 @@ public:
       if (this->recv_bytes_ >= this->content_length_)
       {
         this->recv_msg_ok_ = 1;
+        current_payload++;
         return -1;
       }
       this->recv_buff_->reset();
