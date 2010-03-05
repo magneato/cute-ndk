@@ -71,6 +71,8 @@ namespace ndk
     //
     int handle_opt_i(ndk_handle handle, reactor_mask mask, int opt);
 
+    int find_handle(ndk_handle handle, select_handle *sh);
+
     inline select_handle *alloc_handle();
 
     inline void release_handle(select_handle *h);
