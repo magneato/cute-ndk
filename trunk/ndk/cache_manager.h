@@ -14,6 +14,7 @@
 
 #include "ndk/cache_heap.h"
 #include "ndk/cache_object.h"
+#include "ndk/global_macros.h"
 
 namespace ndk
 {
@@ -31,7 +32,7 @@ namespace ndk
                   int min_obj_size = 1024,        // min size of cache object.
                   int max_obj_size = 20*1024*1024,// max size of cache object. 
                   int high_water_mark = 1024,     // max size of cache in MB
-                  int low_water_mark  = 896,      // min size of cache in MB
+                  int low_water_mark  = 960,      // min size of cache in MB
                                                   // remaind when expiring after 
                                                   // high water mark  has been reached
                   cache_object_factory *cof = 0);
@@ -42,6 +43,9 @@ namespace ndk
     // Return 0 on failure, other on success. 
     cache_object *get(const KEY &key);
 
+    //
+    void release(cache_object *cobj);
+
     // Inserts or replaces object associated with key into cache.
     // Return 0 on success, -1 on failure.
     // Key would be removd from manager if data is NULL.
@@ -49,10 +53,6 @@ namespace ndk
             size_t size,
             cache_object_observer *ob,
             cache_object *&cobj);
-
-    // Decrement reference count on cached object, perhaps delete. 
-    // Returns 0 if only decremented, 1 if deleted, -1 if error.
-    int drop(cache_object *&cobj);
 
     // Removes lowest priority object from cache.
     int flush(void);
@@ -66,17 +66,19 @@ namespace ndk
               cache_object_observer *ob,
               cache_object *&cobj);
 
+    int put_ii(const KEY &key, cache_object *cobj, int reput);
+
     int make_cobj(void *data, size_t size, 
                   cache_object_observer *ob,
                   cache_object *&obj);
 
     //
-    int drop_i(cache_object *&cobj);
+    int drop_i(const KEY &key, cache_object *&cobj);
 
     //
     int flush_i(void); 
 
-    int flush_i(const KEY &key);
+    int flush_i(const KEY &key); 
 
   protected:
     typedef std::map<KEY, cache_object *> cache_map_t;

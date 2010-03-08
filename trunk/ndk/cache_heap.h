@@ -10,7 +10,9 @@
 #ifndef NDK_CACHE_HEAP_H_
 #define NDK_CACHE_HEAP_H_
 
+#include "ndk/config.h"
 #include "ndk/cache_object.h"
+#include "ndk/global_macros.h"
 
 namespace ndk
 {
@@ -47,10 +49,14 @@ namespace ndk
 
     int remove(void *item);
 
+    //
+    int adjust(void *item);
   protected:
     cache_heap_item_t *alloc_item(const KEY &, cache_object *);
 
     void release_item(cache_heap_item_t *);
+
+    int  insert_i(cache_heap_item_t *);
 
     void shift_down(int pos);
 
@@ -81,7 +87,7 @@ namespace ndk
     friend class cache_heap<KEY>;
   public:
     cache_heap_item(const KEY &key, cache_object *obj)
-      : heap_idx_(0),
+      : heap_idx_(-1),
       obj_id_(key),
       cobj_(obj),
       next_(0)
@@ -93,6 +99,7 @@ namespace ndk
       this->cobj_   = obj;
       this->cobj_->heap_item(this);
       this->next_ = 0;
+      this->heap_idx_ = -1;
     }
 
     inline bool operator <  (const cache_heap_item<KEY> &i)

@@ -115,8 +115,7 @@ int epoll_reactor_base::dispatch_io_events()
         ++pfd;
       }else
       {
-        fprintf(stderr, 
-                "dispatch_io [handle = %d] trigger unknown events 0x%x\n",
+        NDK_LOG("dispatch_io [handle = %d] trigger unknown events 0x%x",
                 pfd->data.fd, 
                 pfd->events);
         --result;
@@ -191,9 +190,7 @@ int epoll_reactor_base::handle_opt_i(ndk_handle handle,
                     handle, 
                     &epev) == -1)
     {
-#ifdef NDK_RTLOG
-      perror("epoll_ctl");
-#endif
+      NDK_LOG("epoll_ctl [%s]", strerror(errno));
       // If a handle is closed, epoll removes it from the poll set
       // automatically - we may not know about it yet. If that's the
       // case, a mod operation will fail with ENOENT. Retry it as
