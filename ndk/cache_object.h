@@ -11,6 +11,9 @@
 #define NDK_CACHE_OBJECT_H_
 
 #include <time.h>
+#include "ndk/time_value.h"
+
+#include "ndk/config.h"
 
 namespace ndk
 {
@@ -35,7 +38,8 @@ namespace ndk
   {
   public:
     cache_object(void *p, size_t s, cache_object_observer *ob)
-      : size_(s),
+      : refcount_(0),
+      size_(s),
       data_(p),
       heap_item_(0),
       observer_(ob)
@@ -63,11 +67,28 @@ namespace ndk
 
     virtual int priority(void) const = 0;
 
-    virtual void acquire(void) = 0;
+    inline void acquire(void)
+    {
+      ++this->refcount_;
+      this->acquire_i();
+    }
 
-    virtual void release(void)
-    { if (this->observer_) this->observer_->drop(this); }
+    inline virtual void release(void)
+    { --this->refcount_; }
+
+    inline void drop()
+    {
+      if (this->observer_ && this->refcount_ == 0) 
+        this->observer_->drop(this); 
+    }
+
+    inline int refcount()
+    { return this->refcount_; }
   protected:
+    virtual void acquire_i(void) = 0;
+
+  protected:
+    volatile int refcount_;
     size_t size_;
 
     void *data_;
@@ -101,13 +122,16 @@ namespace ndk
     { }
 
     virtual int priority(void )const 
-    { return static_cast<int>(this->last_access_); }
+    //{ return static_cast<int>(this->last_access_); }
+    { return this->tv_.sec() - 100000000 + this->tv_.usec(); }
 
-    virtual void acquire(void)
-    { this->last_access_ = ::time((time_t *)0); }
+    virtual void acquire_i(void)
+    //{ this->last_access_ = ::time((time_t *)0); }
+    { this->tv_.update(); }
 
   protected:
     time_t last_access_;
+    time_value tv_;
   };
   /**
    * @class lru_cache_object_factory
@@ -144,7 +168,7 @@ namespace ndk
     virtual int priority(void )const 
     { return this->count_; }
 
-    virtual void acquire(void)
+    virtual void acquire_i(void)
     { ++this->count_; }
 
   protected:
@@ -184,7 +208,7 @@ namespace ndk
     virtual int priority(void )const 
     { return 0; }
 
-    virtual void acquire(void)
+    virtual void acquire_i(void)
     { return ; }
   };
   /**
@@ -192,7 +216,7 @@ namespace ndk
    * 
    * @brief
    */
-  class fifo_cache_object_factory
+  class fifo_cache_object_factory : public cache_object_factory
   {
   public:
     virtual cache_object *create(void *p, size_t s, 

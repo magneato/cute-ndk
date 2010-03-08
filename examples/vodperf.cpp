@@ -32,13 +32,27 @@
 static ndk::logger *net_log = ndk::log_manager::instance()->get_logger("root.vodperf");
 
 ndk::mem_pool g_mem_pool;
+//
+enum
+{
+  I_BIZ  = 0x11,
+  I_SBS  = 0x12,
+  I_SCS  = 0x13
+};
+enum
+{
+  svc_running = 0x01,
+  svc_stop,
+  svc_term,
+  svc_exit  
+};
 
 int concurrent_number = 10;
 int concurrent_number_keeping = 200;
 int interval_period = 2;
 int current_payload = 0;
 int current_bandwidth = 0;
-int start_interface = 0;
+int start_interface = I_SCS;
 int listen_port = 8800;
 
 //
@@ -61,20 +75,6 @@ int g_scs_stream_timeout = 0;
 long long int g_scs_flux_total = 0;
 int g_scs_bandwidth = 0;
 long long int g_period_flux = 0;
-//
-enum
-{
-  I_BIZ  = 0x11,
-  I_SBS  = 0x12,
-  I_SCS  = 0x13
-};
-enum
-{
-  svc_running = 0x01,
-  svc_stop,
-  svc_term,
-  svc_exit  
-};
 
 int svc_status = svc_running;
 

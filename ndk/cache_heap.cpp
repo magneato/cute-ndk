@@ -1,6 +1,7 @@
 #ifndef NDK_CACHE_HEAP_CPP_
 #define NDK_CACHE_HEAP_CPP_
 
+#include "ndk/strace.h"
 #include "ndk/cache_heap.h"
 
 #include <cassert>
@@ -14,11 +15,13 @@ cache_heap<KEY>::cache_heap(int max_size)
 , free_heap_items_(0)
 , heap_(0)
 {
-  heap_ = new cache_heap_item_t *[this->size_];
+  STRACE("");
+  heap_ = new cache_heap_item_t *[this->max_size_];
 }
 template<typename KEY>
 cache_heap<KEY>::~cache_heap()
 {
+  STRACE("");
   for (int i = 0; i < this->size_; ++i)
     delete this->heap_[i];
 
@@ -36,8 +39,9 @@ cache_heap<KEY>::~cache_heap()
 }
 template<typename KEY>
 inline typename cache_heap<KEY>::cache_heap_item_t *cache_heap<KEY>::alloc_item(const KEY &key, 
-                                                      cache_object *cobj)
+                                                                                cache_object *cobj)
 {
+  STRACE("");
   if (this->free_heap_items_ == 0)
     return new cache_heap_item_t(key, cobj);
   cache_heap_item_t *item = this->free_heap_items_;
@@ -48,14 +52,30 @@ inline typename cache_heap<KEY>::cache_heap_item_t *cache_heap<KEY>::alloc_item(
 template<typename KEY>
 inline void cache_heap<KEY>::release_item(cache_heap_item_t *item)
 {
+  STRACE("");
   if (item == 0) return ;
+  item->heap_idx_ = -1;
   item->next(this->free_heap_items_);
   this->free_heap_items_ = item;
   return ;
 }
 template<typename KEY>
+int cache_heap<KEY>::adjust(void *item)
+{
+  if (item == 0) return 0;
+  cache_heap_item_t *real_item = reinterpret_cast<cache_heap_item_t *>(item);
+
+  assert(this->heap_[real_item->heap_idx_] == real_item);
+  if (this->heap_[real_item->heap_idx_] != real_item)
+    return -1;
+  this->remove_i(real_item->heap_idx_);
+  //
+  return this->insert_i(real_item);
+}
+template<typename KEY>
 void cache_heap<KEY>::shift_up(int pos)
 {
+  STRACE("");
   cache_heap_item_t *item = this->heap_[pos];
 
   int lchild = (pos * 2) + 1;
@@ -80,6 +100,7 @@ void cache_heap<KEY>::shift_up(int pos)
 template<typename KEY>
 void cache_heap<KEY>::shift_down(int pos)
 {
+  STRACE("");
   cache_heap_item_t *item = this->heap_[pos];
 
   int parent = (pos - 1) / 2;
@@ -102,11 +123,18 @@ template<typename KEY>
 inline int cache_heap<KEY>::insert(const KEY &key, 
                                    cache_object *cobj)
 {
+  STRACE("");
   if (this->is_full()) return -1;
 
   //
   cache_heap_item_t *item = this->alloc_item(key, cobj);
   if (item == 0) return -1;
+
+  return this->insert_i(item);
+}
+template<typename KEY>
+inline int cache_heap<KEY>::insert_i(cache_heap_item_t *item)
+{
   //
   this->heap_[this->size_] = item;
   this->shift_down(this->size_);
@@ -117,6 +145,7 @@ inline int cache_heap<KEY>::insert(const KEY &key,
 template<typename KEY>
 inline typename cache_heap<KEY>::cache_heap_item_t *cache_heap<KEY>::remove_i(int pos)
 {
+  STRACE("");
   if (pos < 0 || pos >= this->size_) return 0;
   cache_heap_item_t *item = this->heap_[pos];
   --this->size_;
@@ -131,6 +160,7 @@ inline typename cache_heap<KEY>::cache_heap_item_t *cache_heap<KEY>::remove_i(in
 template<typename KEY>
 inline int cache_heap<KEY>::remove(KEY &key, cache_object *&cobj)
 {
+  STRACE("");
   if (this->is_empty()) return -1;
 
   cache_heap_item_t *item = this->heap_[0];
@@ -145,6 +175,7 @@ inline int cache_heap<KEY>::remove(KEY &key, cache_object *&cobj)
 template<typename KEY>
 int cache_heap<KEY>::remove(void *item)
 {
+  STRACE("");
   assert(!this->is_empty());
   if (this->is_empty() || item == 0) return -1;
 

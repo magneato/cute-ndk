@@ -54,7 +54,7 @@ public:
   virtual int drop(ndk::cache_object *cobj)
   {
     ++g_drop_obj;
-    net_log->rinfo("drop one cache object");
+    net_log->rinfo("drop one cache object [%p]", cobj);
     ::munmap(cobj->data(), cobj->size());
     return 0;
   }
@@ -68,6 +68,7 @@ public:
     send_bytes_(0),
     bytes_to_send_(8192),
     timer_id_(-1),
+    file_handle_(NDK_INVALID_HANDLE),
     cache_obj_(0),
     recv_buff_(0)
   { }
@@ -75,13 +76,26 @@ public:
   virtual ~http_client()
   {
     STRACE("");
-    net_log->debug("delete %p", this);
     if (this->recv_buff_)
     {
       delete [](char *)this->recv_buff_->data();
       this->recv_buff_->release();
     }
     this->recv_buff_ = 0;
+
+    if (this->file_handle_ != NDK_INVALID_HANDLE)
+    {
+      ::close(this->file_handle_);
+      this->file_handle_ = NDK_INVALID_HANDLE;
+    }
+    if (this->cache_obj_)
+    {
+      g_cache_manager->release(this->cache_obj_);
+      net_log->rinfo("%p refer count = %d", 
+                     this->cache_obj_,
+                     this->cache_obj_->refcount());
+    }
+    this->cache_obj_ = 0;
   }
   virtual int open(void *arg)
   {
@@ -195,28 +209,37 @@ public:
     this->cache_obj_ = g_cache_manager->get(uri);
     if (this->cache_obj_ == 0)
     {
-      int fd = ::open(uri.c_str(), O_RDONLY);
+      this->file_handle_ = ::open(uri.c_str(), O_RDONLY);
       struct stat st;
-      if (fd != -1 && ::fstat(fd, &st) != -1)
+      if (this->file_handle_ != -1 && ::fstat(this->file_handle_, &st) != -1)
       {
-        void *data = ::mmap(0, st.st_size, PROT_READ, MAP_SHARED, fd, 0);
+        ++g_miss;
+        void *data = ::mmap(0, st.st_size, PROT_READ, 
+                            MAP_SHARED, this->file_handle_, 0);
         if (g_cache_manager->put(uri, data, st.st_size, 
                                  g_cache_object_observer,
                                  this->cache_obj_) != 0)
         {
-          result = -1;
+          result = st.st_size;
+          this->recv_buff_->reset();
           net_log->error("put cache to manager failed!");
         }else
         {
+          net_log->rinfo("hit [%s] failed! [refcount = %d][cobj = %p]", 
+                         uri.c_str(),
+                         this->cache_obj_->refcount(),
+                         this->cache_obj_);
           ++g_put_obj;
-          ++g_miss;
           result = st.st_size;
+          if (this->file_handle_ != -1) 
+            ::close(this->file_handle_);
+          this->file_handle_ = NDK_INVALID_HANDLE;
         }
       }else 
         result = -1;
-      if (fd != -1) ::close(fd);
     }else
     {
+      net_log->rinfo("hit [%s] ok!", uri.c_str());
       result = this->cache_obj_->size();
       ++g_hit;
     }
@@ -247,7 +270,10 @@ public:
       << "Accept-Ranges: bytes\r\n"
       << "Connection: keep-alive\r\n";
     if (result != -1)
+    {
       os << "Content-Length: " << result << "\r\n";
+      this->content_length_ = result;
+    }
     os << "\r\n";
     this->peer().send(os.str().c_str(), os.str().length());
     return result;
@@ -319,9 +345,16 @@ public:
   virtual int handle_output(ndk::ndk_handle h)
   {
     STRACE("");
-    int result = this->peer().send(((char *)this->cache_obj_->data()) 
-                                   + this->send_bytes_,
-                                   this->bytes_to_send_);
+    int result = 0;
+    if (this->file_handle_ != NDK_INVALID_HANDLE)
+    {
+      result = this->transfic_from_file();
+    }else
+    {
+      result = this->peer().send(((char *)this->cache_obj_->data()) 
+                                 + this->send_bytes_,
+                                 this->bytes_to_send_);
+    }
     if (result < 0)
     {
       net_log->error("send data to %d failed! [%s]",
@@ -330,27 +363,45 @@ public:
       return -1;
     }
     this->send_bytes_ += result;
-    if (this->send_bytes_ >= this->cache_obj_->size())
+    if (this->send_bytes_ >= this->content_length_)
     {
       ++g_finished;
       ndk::time_value diff = ndk::time_value::gettimeofday() - this->begin_time_;
       net_log->rinfo("send data completely! [%d bytes used %lu msecs]", 
-                     this->cache_obj_->size(),
+                     this->content_length_,
                      diff.msec());
       return -1;
-    }else if (this->cache_obj_->size() - this->send_bytes_ 
+    }else if (this->content_length_ - this->send_bytes_ 
               < this->bytes_to_send_)
     {
-      this->bytes_to_send_ = this->cache_obj_->size() - this->send_bytes_;
+      this->bytes_to_send_ = this->content_length_ - this->send_bytes_;
     }
 
+    return 0;
+  }
+  int transfic_from_file()
+  {
+    int result = ::read(this->file_handle_, 
+                        this->recv_buff_->wr_ptr(), 
+                        this->recv_buff_->space());
+    if (result <= 0)
+      return -1;
+    this->recv_buff_->wr_ptr(result);
+    result = this->peer().send(this->recv_buff_->rd_ptr(),
+                               this->recv_buff_->length());
+    if (result <= 0)
+      return -1;
+    this->send_bytes_ += result;
+    this->recv_buff_->reset();
     return 0;
   }
 protected:
   int recv_msg_ok_;
   int send_bytes_;
   int bytes_to_send_;
+  int content_length_;
   int timer_id_;
+  ndk::ndk_handle file_handle_;
   ndk::cache_object* cache_obj_;
   ndk::time_value begin_time_;
   ndk::message_block *recv_buff_;
@@ -411,7 +462,7 @@ int main(int argc, char *argv[])
     fprintf(stderr, "init logger failed\n");
     return 0;
   }
-#if 0
+#if 1
   ndk::epoll_reactor<ndk::reactor_null_token> *r_impl
     = new ndk::epoll_reactor<ndk::reactor_null_token>();
 #else
@@ -431,7 +482,11 @@ int main(int argc, char *argv[])
     net_log->error("open acceptor failed");
     return -1;
   }
-  g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>();
+  g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(65535,
+                                                                         1024,
+                                                                         20*1024*1024,
+                                                                         1024,
+                                                                         960);
   ndk::reactor::instance()->run_reactor_event_loop();
   net_log->error("reactor exit! [%s]", strerror(errno));
   return 0;

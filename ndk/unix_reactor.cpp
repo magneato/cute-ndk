@@ -172,9 +172,7 @@ int unix_reactor::handle_events_i(const time_value *max_wait_time)
     return 0;
   else if (result == -1 && errno != EINTR)
   {
-#ifdef NDK_RTLOG
-    fprintf(stderr, "warning: %s\n", strerror(errno));
-#endif
+    NDK_LOG("warning: %s", strerror(errno));
     return result;
   }
   // Dispatch an event.
