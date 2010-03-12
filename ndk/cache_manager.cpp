@@ -85,7 +85,8 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
                                                   void *data,
                                                   size_t size,
                                                   cache_object_observer *ob,
-                                                  cache_object *&cobj)
+                                                  cache_object *&cobj,
+                                                  int reput/* = 0*/)
 {
   STRACE("");
   if (data == 0) 
@@ -97,13 +98,6 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
   if (this->make_cobj(data, size, ob, cobj) == -1)
     return -1;
 
-  return this->put_ii(key, cobj, 0);
-}
-template<typename KEY, typename SYNCH_MUTEX>
-inline int cache_manager<KEY, SYNCH_MUTEX>::put_ii(const KEY &key, 
-                                                   cache_object *cobj,
-                                                   int reput)
-{
   std::pair<cache_map_itor, bool> ret = 
     this->cache_map_.insert(std::make_pair(key, cobj));
   if (!ret.second) // insert failed. the pair was actually inserted
@@ -146,8 +140,13 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::drop_i(const KEY &key,
     result = 1;
   }else
   {
-    fprintf(stdout, "refcount = %d  %d %p\n", cobj->refcount(), this->cache_map_.size(), cobj);
-    result = this->put_ii(key, cobj, 1);
+    //fprintf(stdout, "refcount = %d  %d %p\n", cobj->refcount(), this->cache_map_.size(), cobj);
+    result = this->put_i(key, 
+                         cobj->data(), 
+                         cobj->size(), 
+                         cobj->observer(), 
+                         cobj, 
+                         1);
   }
   return result;
 }
@@ -167,12 +166,19 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
   if (size + this->water_mark_ > this->high_water_mark_)
   {
     // drop some object.
+    int count = 0;  // for test
+    int s = this->cache_map_.size();
     do
     {
       if (this->flush_i() == -1)
       {
         NDK_LOG("error: flush error!");
         return -1;
+      }
+      if (count++ > s)
+      {
+        this->cache_heap_->dump();
+        ::exit(0);
       }
     }while (this->water_mark_ > this->low_water_mark_);
   }

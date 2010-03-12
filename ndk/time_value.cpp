@@ -4,6 +4,8 @@ namespace ndk
 {
 const time_value time_value::zero;
 
+const time_value time_value::process_started = time_value::gettimeofday();
+
 void time_value::normalize()
 {
   if (this->tv_.tv_usec >= 1000000)

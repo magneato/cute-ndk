@@ -216,9 +216,9 @@ public:
         ++g_miss;
         void *data = ::mmap(0, st.st_size, PROT_READ, 
                             MAP_SHARED, this->file_handle_, 0);
-        if (g_cache_manager->put(uri, data, st.st_size, 
-                                 g_cache_object_observer,
-                                 this->cache_obj_) != 0)
+        if (data && g_cache_manager->put(uri, data, st.st_size, 
+                                         g_cache_object_observer,
+                                         this->cache_obj_) != 0)
         {
           result = st.st_size;
           this->recv_buff_->reset();
@@ -485,8 +485,8 @@ int main(int argc, char *argv[])
   g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(65535,
                                                                          1024,
                                                                          20*1024*1024,
-                                                                         1024,
-                                                                         960);
+                                                                         500,
+                                                                         450);
   ndk::reactor::instance()->run_reactor_event_loop();
   net_log->error("reactor exit! [%s]", strerror(errno));
   return 0;

@@ -59,6 +59,9 @@ namespace ndk
     inline size_t size(void) const
     { return this->size_; }
 
+    inline cache_object_observer *observer()
+    { return this->observer_; }
+
     inline void heap_item(void *val)
     { this->heap_item_ = val; }
 
@@ -84,6 +87,7 @@ namespace ndk
 
     inline int refcount()
     { return this->refcount_; }
+
   protected:
     virtual void acquire_i(void) = 0;
 
@@ -121,17 +125,16 @@ namespace ndk
       last_access_(0)
     { }
 
-    virtual int priority(void )const 
-    //{ return static_cast<int>(this->last_access_); }
-    { return this->tv_.sec() - 100000000 + this->tv_.usec(); }
+    inline virtual int priority(void )const 
+    { return static_cast<int>(this->last_access_.msec()); }
 
-    virtual void acquire_i(void)
-    //{ this->last_access_ = ::time((time_t *)0); }
-    { this->tv_.update(); }
-
+    inline virtual void acquire_i(void)
+    { 
+      this->last_access_ = time_value::gettimeofday() - 
+        time_value::process_started; 
+    }
   protected:
-    time_t last_access_;
-    time_value tv_;
+    time_value last_access_;
   };
   /**
    * @class lru_cache_object_factory
@@ -141,16 +144,12 @@ namespace ndk
   class lru_cache_object_factory : public cache_object_factory
   {
   public:
-    virtual cache_object *create(void *p, size_t s, 
-                                 cache_object_observer *ob)
-    {
-      return new lru_cache_object(p, s, ob);
-    }
+    inline virtual cache_object *create(void *p, size_t s, 
+                                        cache_object_observer *ob)
+    { return new lru_cache_object(p, s, ob); }
 
-    virtual void destroy(cache_object *p)
-    {
-      if (p) delete reinterpret_cast<lru_cache_object *>(p);
-    }
+    inline virtual void destroy(cache_object *p)
+    { if (p) delete reinterpret_cast<lru_cache_object *>(p); }
   };
   /**
    * @class lfu_cache_object
@@ -162,17 +161,17 @@ namespace ndk
   public:
     lfu_cache_object(void *p, size_t s, cache_object_observer *ob)
       : cache_object(p, s, ob),
-        count_(0)
+        hit_count_(0)
     { }
 
-    virtual int priority(void )const 
-    { return this->count_; }
+    inline virtual int priority(void )const 
+    { return this->hit_count_; }
 
-    virtual void acquire_i(void)
-    { ++this->count_; }
+    inline virtual void acquire_i(void)
+    { ++this->hit_count_; }
 
   protected:
-    int count_;
+    int hit_count_;
   };
   /**
    * @class lfu_cache_object_factory
@@ -182,16 +181,12 @@ namespace ndk
   class lfu_cache_object_factory : public cache_object_factory
   {
   public:
-    virtual cache_object *create(void *p, size_t s, 
-                                 cache_object_observer *ob)
-    {
-      return new lfu_cache_object(p, s, ob);
-    }
+    inline virtual cache_object *create(void *p, size_t s, 
+                                        cache_object_observer *ob)
+    { return new lfu_cache_object(p, s, ob); }
 
-    virtual void destroy(cache_object *p)
-    {
-      if (p) delete reinterpret_cast<lfu_cache_object *>(p);
-    }
+    inline virtual void destroy(cache_object *p)
+    { if (p) delete reinterpret_cast<lfu_cache_object *>(p); }
   };
   /**
    * @class fifo_cache_object
@@ -205,10 +200,10 @@ namespace ndk
       : cache_object(p, s, ob)
     { }
 
-    virtual int priority(void )const 
+    inline virtual int priority(void )const 
     { return 0; }
 
-    virtual void acquire_i(void)
+    inline virtual void acquire_i(void)
     { return ; }
   };
   /**
@@ -219,16 +214,12 @@ namespace ndk
   class fifo_cache_object_factory : public cache_object_factory
   {
   public:
-    virtual cache_object *create(void *p, size_t s, 
-                                 cache_object_observer *ob)
-    {
-      return new fifo_cache_object(p, s, ob);
-    }
+    inline virtual cache_object *create(void *p, size_t s, 
+                                        cache_object_observer *ob)
+    { return new fifo_cache_object(p, s, ob); }
 
-    virtual void destroy(cache_object *p)
-    {
-      if (p) delete reinterpret_cast<fifo_cache_object *>(p);
-    }
+    inline virtual void destroy(cache_object *p)
+    { if (p) delete reinterpret_cast<fifo_cache_object *>(p); }
   };
 } // namespace ndk
 

@@ -60,6 +60,7 @@ public:
     --this->size_;
     this->heap_[pos] = this->heap_[this->size_];
     int parent = (pos - 1) / 2;
+    if (pos == 0) parent = 0;
     if (this->heap_[this->size_] >= this->heap_[parent])
       this->shift_up(pos);
     else
@@ -114,15 +115,20 @@ int main ()
   printf("prepop someone : ");
   for (int i = 0; i < 100; ++i)
   {
-    printf("%d ", h.pop(rand() % 100));
+    printf("%d ", h.pop(0));//h.pop(rand() % 100));
   }
   printf("\n\n");
 
-  // print
-  printf("pop heap : ");
   for (int i = 0; i < 100; ++i)
   {
-    printf("%d ", h.pop());
+    h.push(rand() % 200);
+  }
+
+  // print
+  printf("pop heap : ");
+  for (int i = 0; i < 200; ++i)
+  {
+    printf("%d ", h.pop(0));
   }
   printf("\n\n");
 }
