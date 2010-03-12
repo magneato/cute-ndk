@@ -110,6 +110,9 @@ int epoll_reactor_base::dispatch_io_events()
                                  event_handler::except_mask);
       }else if (NDK_BIT_ENABLED(pfd->events, EPOLLHUP | EPOLLERR))
       {
+        NDK_LOG("dispatch_io [handle = %d] trigger up/error [0x%x] events!",
+                pfd->data.fd,
+                pfd->events);
         this->remove_handler_i(pfd->data.fd, 
                                event_handler::all_events_mask);
         ++pfd;

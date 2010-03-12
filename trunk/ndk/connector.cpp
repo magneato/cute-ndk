@@ -12,7 +12,7 @@ namespace ndk
 {
 template<typename svc_handler_t>
 nonblocking_connect_handler<svc_handler_t>::nonblocking_connect_handler(connector<svc_handler_t> &cn,
-                                                         svc_handler_t *h)
+                                                                        svc_handler_t *h)
 : connector_(cn),
   svc_handler_(h),
   timer_id_(-1)
@@ -111,21 +111,27 @@ inline int nonblocking_connect_handler<svc_handler_t>::handle_exception(ndk_hand
   delete this; return -1;
 }
 template<typename svc_handler_t>
-inline int nonblocking_connect_handler<svc_handler_t>::handle_close(ndk_handle handle, 
-                                                                    reactor_mask mask)
+inline int nonblocking_connect_handler<svc_handler_t>::handle_close(ndk_handle , 
+                                                                    reactor_mask )
 {
   STRACE("");
-  assert(0);
+  svc_handler_t *sh = 0;
+  int result = this->close(sh);
+
+  if (sh != 0)
+    sh->close(event_handler::connect_mask);
+
+  assert(result == 0);
   delete this; return 0;
 }
 // ---------------------------------------------------------------
 template<typename svc_handler_t>
 int connector<svc_handler_t>::connect(svc_handler_t *sh,
-                                    const inet_addr &remote_addr, 
-                                    const time_value *timeout/* = 0*/,
-                                    const inet_addr &local_addr/* = inet_addr::addr_any*/,
-                                    const size_t rcvbuf_size/* = 0*/,
-                                    const int reuse_addr/* = 0*/)
+                                      const inet_addr &remote_addr, 
+                                      const time_value *timeout/* = 0*/,
+                                      const inet_addr &local_addr/* = inet_addr::addr_any*/,
+                                      const size_t rcvbuf_size/* = 0*/,
+                                      const int reuse_addr/* = 0*/)
 {
   STRACE("");
   if (sh == 0) return -1;
@@ -133,12 +139,12 @@ int connector<svc_handler_t>::connect(svc_handler_t *sh,
   sh->set_reactor(this->get_reactor());
 
   int result = this->connector_.connect(sh->peer(),
-                                         remote_addr,
-                                         &time_value::zero,
-                                         local_addr,
-                                         AF_INET,
-                                         reuse_addr,
-                                         rcvbuf_size);
+                                        remote_addr,
+                                        &time_value::zero,
+                                        local_addr,
+                                        AF_INET,
+                                        reuse_addr,
+                                        rcvbuf_size);
 
   // Activate immediately if we are connected.
   if (result == 0)

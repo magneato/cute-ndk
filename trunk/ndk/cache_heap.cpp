@@ -5,6 +5,7 @@
 #include "ndk/cache_heap.h"
 
 #include <cassert>
+#include <cstdio>
 
 namespace ndk
 {
@@ -17,6 +18,8 @@ cache_heap<KEY>::cache_heap(int max_size)
 {
   STRACE("");
   heap_ = new cache_heap_item_t *[this->max_size_];
+  for (int i = 0; i < this->max_size_; ++i)
+    heap_[i] = 0;
 }
 template<typename KEY>
 cache_heap<KEY>::~cache_heap()
@@ -151,6 +154,7 @@ inline typename cache_heap<KEY>::cache_heap_item_t *cache_heap<KEY>::remove_i(in
   --this->size_;
   this->heap_[pos] = this->heap_[this->size_];
   int parent = (pos - 1) / 2;
+  if (pos == 0) parent = 0;
   if (*(this->heap_[this->size_]) >= *(this->heap_[parent]))
     this->shift_up(pos);
   else
@@ -191,6 +195,32 @@ int cache_heap<KEY>::remove(void *item)
 
   this->release_item(real_item); //
   return 0;
+}
+template<typename KEY>
+void cache_heap<KEY>::dump()
+{
+  fprintf(stderr, "cache heap elements: ");
+  for (int i = 0; i < this->size_; ++i)
+  {
+    fprintf(stderr, "%d:%d:%p ", 
+            i, 
+            this->heap_[i]->priority(),
+            this->heap_[i]);
+  }
+  fprintf(stderr, "\n");
+  fprintf(stderr, "cache heap sorted elements: ");
+  cache_heap_item_t *item = 0;
+  int i = 0;
+  while (1)
+  {
+    item = this->remove_i(0);
+    if (item == 0) break;
+    fprintf(stderr, "%d:%d:%p ", 
+            i++, 
+            item->priority(),
+            item);
+  }
+  fprintf(stderr, "\n");
 }
 } // namespace ndk
 

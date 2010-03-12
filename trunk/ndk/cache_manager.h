@@ -64,9 +64,8 @@ namespace ndk
     int put_i(const KEY &key, void *data,
               size_t size,
               cache_object_observer *ob,
-              cache_object *&cobj);
-
-    int put_ii(const KEY &key, cache_object *cobj, int reput);
+              cache_object *&cobj,
+              int reput = 0);
 
     int make_cobj(void *data, size_t size, 
                   cache_object_observer *ob,

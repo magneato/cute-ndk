@@ -24,6 +24,8 @@ namespace ndk
   public:
     // Constant "0".
     static const time_value zero;
+
+    static const time_value process_started;
     
     time_value() { set(0, 0); }
 
@@ -63,20 +65,14 @@ namespace ndk
 
     // initializes the time_value from a timeval.
     inline void set(const timeval &tv)
-    {
-      this->set(tv.tv_sec, tv.tv_usec);
-    }
+    { this->set(tv.tv_sec, tv.tv_usec); }
 
     // initializes the time_value object from a timespec_t.
     inline void set(const timespec &t)
-    {
-      this->set(t.tv_sec, t.tv_nsec/1000);
-    }
+    { this->set(t.tv_sec, t.tv_nsec/1000); }
 
     inline unsigned long msec (void) const
-    {
-      return this->tv_.tv_sec * 1000 + this->tv_.tv_usec / 1000;
-    }
+    { return this->tv_.tv_sec * 1000 + this->tv_.tv_usec / 1000; }
 
     // returns the value of the object as a timespec_t.
     inline operator timespec () const
@@ -89,44 +85,28 @@ namespace ndk
 
     // returns the value of the object as a timeval.
     inline operator timeval () const
-    {
-      return this->tv_;
-    }
+    { return this->tv_; }
 
     // returns a pointer to the object as a timeval.
     inline operator const timeval *() const
-    {
-      return &this->tv_;
-    }
+    { return &this->tv_; }
 
     // = The following are accessor/mutator methods.
     inline time_t sec(void) const
-    {
-      return this->tv_.tv_sec;
-    }
+    { return this->tv_.tv_sec; }
 
     inline void sec(time_t sec)
-    {
-      this->tv_.tv_sec = sec;
-    }
+    { this->tv_.tv_sec = sec; }
 
     inline long int usec(void) const
-    {
-      return this->tv_.tv_usec;
-    }
+    { return this->tv_.tv_usec; }
 
     inline void usec(long int usec)
-    {
-      this->tv_.tv_usec = usec;
-    }
+    { this->tv_.tv_usec = usec; }
 
     // Get current time value
     inline void update()
-    {
-      struct timeval tv;
-      ::gettimeofday (&tv, 0);
-      this->set(tv);
-    }
+    { ::gettimeofday (&this->tv_, 0); }
 
     inline time_value &operator += (const time_value &tv)
     {
@@ -185,9 +165,7 @@ namespace ndk
 
     inline friend bool operator > (const time_value &tv1,
                                    const time_value &tv2)
-    {
-      return tv2 < tv1;
-    }
+    { return tv2 < tv1; }
 
     inline friend bool operator <= (const time_value &tv1,
                                     const time_value &tv2)
@@ -202,9 +180,7 @@ namespace ndk
 
     inline friend bool operator >= (const time_value &tv1,
                                     const time_value &tv2)
-    {
-      return tv2 <= tv1;
-    }
+    { return tv2 <= tv1; }
 
     inline friend bool operator == (const time_value &tv1,
                                     const time_value &tv2)
@@ -215,9 +191,7 @@ namespace ndk
 
     inline friend bool operator != (const time_value &tv1,
                                     const time_value &tv2)
-    {
-      return !(tv1 == tv2);
-    }
+    { return !(tv1 == tv2); }
     static inline time_value gettimeofday()
     {
         struct timeval tv;

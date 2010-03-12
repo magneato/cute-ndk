@@ -51,6 +51,8 @@ namespace ndk
 
     //
     int adjust(void *item);
+
+    void dump(void);
   protected:
     cache_heap_item_t *alloc_item(const KEY &, cache_object *);
 
