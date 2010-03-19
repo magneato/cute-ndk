@@ -277,6 +277,8 @@ namespace ndk
   protected:
     // The maximum number of file descriptors over which demultiplexing will occur.
     int size_;
+    
+    int active_fds_;  // for select.
 
     // Keeps track of whether we should delete the timer queue(if we
     // didn't create it, then we don't delete it).

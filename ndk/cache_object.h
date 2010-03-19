@@ -126,15 +126,14 @@ namespace ndk
     { }
 
     inline virtual int priority(void )const 
-    { return static_cast<int>(this->last_access_.msec()); }
+    { return static_cast<int>(this->last_access_); }
 
     inline virtual void acquire_i(void)
     { 
-      this->last_access_ = time_value::gettimeofday() - 
-        time_value::process_started; 
+      this->last_access_ = ::time(0) - time_value::start_time.sec(); 
     }
   protected:
-    time_value last_access_;
+    time_t last_access_;
   };
   /**
    * @class lru_cache_object_factory

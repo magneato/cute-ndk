@@ -42,9 +42,6 @@ int nonblocking_connect_handler<svc_handler_t>::close(svc_handler_t *&sh)
     this->timer_id_ = -1;
   }
 
-  // 2. remove it from connector's nonblocking handle set. 
-  this->connector_.remove_non_blocking_handle(sh->get_handle());
-
   // 3. remove handler from reactor.
   if (sh->get_handle() != NDK_INVALID_HANDLE)
   {
@@ -187,11 +184,6 @@ int connector<svc_handler_t>::nonblocking_connect(svc_handler_t *sh,
     return -1;
   }
 
-  {
-    guard<thread_mutex> g(this->non_blocking_handles_mutex_);
-    // Add handle to non-blocking handle set. 
-    this->non_blocking_handles_.insert(std::make_pair(sh->get_handle(), nbch));
-  }
   if (timeout != 0)
   {
     int timer_id = this->get_reactor()->schedule_timer(nbch,
@@ -201,7 +193,6 @@ int connector<svc_handler_t>::nonblocking_connect(svc_handler_t *sh,
     {
       assert(timer_id != -1);
       this->get_reactor()->remove_handler(sh->get_handle(), mask);
-      this->remove_non_blocking_handle(sh->get_handle());
       sh->close(mask);
       return -1;
     }
@@ -224,30 +215,5 @@ void connector<svc_handler_t>::init_svc_handler(svc_handler_t *sh,
   }
   sh->close(event_handler::connect_mask);
 }
-template<typename svc_handler_t>
-void connector<svc_handler_t>::remove_non_blocking_handle(ndk_handle h)
-{
-  STRACE("");
-  guard<thread_mutex> g(this->non_blocking_handles_mutex_);
-  nb_handles_list_itor pos = this->non_blocking_handles_.find(h);
-  if (pos != this->non_blocking_handles_.end())
-  {
-    this->non_blocking_handles_.erase(pos);
-  }
-}
-template<typename svc_handler_t>
-void connector<svc_handler_t>::close(void)
-{
-  STRACE("");
-  guard<thread_mutex> g(this->non_blocking_handles_mutex_);
-  nb_handles_list_itor pos = this->non_blocking_handles_.begin();
-  while (pos != this->non_blocking_handles_.end())
-  {
-    svc_handler_t *sh = 0;
-    pos->second->close(sh);
-    delete pos->second;
-    this->non_blocking_handles_.erase(pos++);
-  }
-} 
 } // namespace ndk
 #endif  // NDK_CONNECTOR_CPP_

@@ -155,6 +155,7 @@ int unix_reactor::poll_events_i(const time_value *max_wait_time)
          && *this_timeout != *max_wait_time) ? 1 : 0); 
 
   int nfds = this->poll_events(this_timeout);
+  this->active_fds_ = nfds;
   // If timers are pending, override any timeout from the epoll.
   return((nfds == 0 && timers_pending != 0) ? 1 : nfds);
 }
@@ -181,20 +182,19 @@ int unix_reactor::handle_events_i(const time_value *max_wait_time)
 int unix_reactor::dispatch_events()
 {
   STRACE("");
-  int result = 0;
 
   // Handle timers early since they may have higher latency
   // constraints than I/O handlers.  Ideally, the order of
   // dispatching should be a strategy...
 
-  result += this->dispatch_timer_handler();
+  this->dispatch_timer_handler();
 
   // Check to see if there are no more I/O handles left to
   // dispatch AFTER we've handled the timers.
   //
-  result += this->dispatch_io_events();
+  this->dispatch_io_events();
 
-  return result;
+  return 0;
 }
 int unix_reactor::register_handler_i(ndk_handle handle,
                                      event_handler *eh,

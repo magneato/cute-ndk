@@ -25,7 +25,7 @@ namespace ndk
     // Constant "0".
     static const time_value zero;
 
-    static const time_value process_started;
+    static const time_value start_time;
     
     time_value() { set(0, 0); }
 

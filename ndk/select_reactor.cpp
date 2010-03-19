@@ -1,5 +1,7 @@
 #include "ndk/select_reactor.h"
 
+#include <cassert>
+
 namespace ndk
 {
 select_reactor_base::select_reactor_base()
@@ -105,7 +107,8 @@ int select_reactor_base::reset_fd_set(fd_set *&rd_set,
   FD_ZERO(this->wr_set_);
   FD_ZERO(this->ex_set_);
   int result = -1;
-  if (this->handle_list_rd_ == 0) rd_set = 0;
+  if (this->handle_list_rd_ == 0) 
+    rd_set = 0;
   else
   {
     rd_set = this->rd_set_;
@@ -120,7 +123,8 @@ int select_reactor_base::reset_fd_set(fd_set *&rd_set,
       itor = itor->next;
     }
   }
-  if (this->handle_list_wr_ == 0) wr_set = 0;
+  if (this->handle_list_wr_ == 0) 
+    wr_set = 0;
   else
   {
     wr_set = this->wr_set_;
@@ -135,7 +139,8 @@ int select_reactor_base::reset_fd_set(fd_set *&rd_set,
       itor = itor->next;
     }
   }
-  if (this->handle_list_ex_ == 0) ex_set = 0;
+  if (this->handle_list_ex_ == 0) 
+    ex_set = 0;
   else
   {
     ex_set = this->ex_set_;
@@ -155,45 +160,73 @@ int select_reactor_base::reset_fd_set(fd_set *&rd_set,
 int select_reactor_base::dispatch_io_events()
 {
   STRACE("");
-  int result = 0;
-  for (int i = 0; i < this->size_; ++i)
+  if (this->active_fds_ < 1) return 0;
+  select_handle *p = 0;
+  select_handle *itor = 0;
+  if (this->handle_list_rd_ != 0)
   {
-    if (FD_ISSET(i, this->rd_set_))
+    itor = this->handle_list_rd_;
+    do
     {
-      event_handler *eh = this->handler_rep_.find(i);
-      if (eh)
+      p = itor;
+      itor = itor->next;
+      assert(p->handle != NDK_INVALID_HANDLE);
+      if (FD_ISSET(p->handle, this->rd_set_))
       {
-        if (this->upcall(eh,
-                         &event_handler::handle_input,
-                         i) < 0)
-          this->remove_handler_i(i, event_handler::read_mask);
+        event_handler *eh = this->handler_rep_.find(p->handle);
+        if (eh)
+        {
+          if (this->upcall(eh,
+                           &event_handler::handle_input,
+                           p->handle) < 0)
+            this->remove_handler_i(p->handle, event_handler::read_mask);
+        }
       }
-    }
-    if (FD_ISSET(i, this->wr_set_))
-    {
-      event_handler *eh = this->handler_rep_.find(i);
-      if (eh)
-      {
-        if (this->upcall(eh,
-                         &event_handler::handle_output,
-                         i) < 0)
-          this->remove_handler_i(i, event_handler::write_mask);
-      }
-    }
-    if (FD_ISSET(i, this->ex_set_))
-    {
-      event_handler *eh = this->handler_rep_.find(i);
-      if (eh)
-      {
-        if (this->upcall(eh,
-                         &event_handler::handle_exception,
-                         i) < 0)
-          this->remove_handler_i(i, event_handler::except_mask);
-      }
-    }
-    ++result;
+    }while (itor != 0);
   }
-  return result;
+  if (this->handle_list_wr_ != 0)
+  {
+    itor = this->handle_list_wr_;
+    do
+    {
+      p = itor;
+      itor = itor->next;
+      assert(p->handle != NDK_INVALID_HANDLE);
+      if (FD_ISSET(p->handle, this->wr_set_))
+      {
+        event_handler *eh = this->handler_rep_.find(p->handle);
+        if (eh)
+        {
+          if (this->upcall(eh,
+                           &event_handler::handle_output,
+                           p->handle) < 0)
+            this->remove_handler_i(p->handle, event_handler::write_mask);
+        }
+      }
+    }while (itor != 0);
+  }
+  if (this->handle_list_ex_ != 0)
+  {
+    itor = this->handle_list_ex_;
+    do
+    {
+      p = itor;
+      itor = itor->next;
+      assert(p->handle != NDK_INVALID_HANDLE);
+      if (FD_ISSET(p->handle, this->ex_set_))
+      {
+        event_handler *eh = this->handler_rep_.find(p->handle);
+        if (eh)
+        {
+          if (this->upcall(eh,
+                           &event_handler::handle_exception,
+                           p->handle) < 0)
+            this->remove_handler_i(p->handle, event_handler::except_mask);
+        }
+      }
+    }while (itor != 0);
+  }
+  return 0;
 }
 int select_reactor_base::handle_opt_i(ndk_handle handle,
                                      reactor_mask mask,
@@ -284,16 +317,10 @@ int select_reactor_base::append_handle(ndk_handle handle, select_handle *&sh)
 
   if (this->find_handle(handle, sh) == 0) return 0;
 
-  if (sh == 0)
-  {
-    sh = this->alloc_handle();
-    if (sh == 0) return -1;
-  }else
-  {
-    select_handle *h = this->alloc_handle();
-    if (h == 0) return -1;
-    h->next = sh; sh = h;
-  }
+  select_handle *h = this->alloc_handle();
+  if (h == 0) return -1;
+  h->next = sh; 
+  sh = h;
   sh->handle = handle;
   return 0;
 }
