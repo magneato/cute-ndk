@@ -17,8 +17,6 @@
 #include "ndk/event_handler.h"
 #include "ndk/sock_connector.h"
 
-#include <map>
-
 namespace ndk
 {
   /**
@@ -100,19 +98,13 @@ namespace ndk
     { }
 
     virtual ~connector()
-    {
-      this->close();
-    }
+    { }
 
     inline virtual int open(reactor *r)
     {
       this->set_reactor(r);
       return 0;
     }
-
-    // Close down the Connector.  All pending non-blocking connects are
-    // canceled and the corresponding svc_handler is closed.
-    virtual void close(void);
 
     /**
      * Initiate connection of <svc_handler> to peer at <remote_addr> 
@@ -130,21 +122,11 @@ namespace ndk
                         const int reuse_addr = 0);
 
   protected:
-    void remove_non_blocking_handle(ndk_handle );
-
     int nonblocking_connect(svc_handler_t *sh, const time_value *timeout);
 
     void init_svc_handler(svc_handler_t *sh, ndk_handle handle);
   protected:
     sock_connector connector_;
-
-    // Handle list representing the non-blocking connects in progress.
-    typedef std::map<ndk_handle, 
-            nonblocking_connect_handler<svc_handler_t> *> nb_handles_list_t;
-    typedef typename std::map<ndk_handle, 
-            nonblocking_connect_handler<svc_handler_t> *>::iterator nb_handles_list_itor;
-    nb_handles_list_t non_blocking_handles_;
-    thread_mutex non_blocking_handles_mutex_;
   };
 } // namespace ndk
 #include "ndk/connector.cpp"

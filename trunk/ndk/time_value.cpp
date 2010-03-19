@@ -4,7 +4,7 @@ namespace ndk
 {
 const time_value time_value::zero;
 
-const time_value time_value::process_started = time_value::gettimeofday();
+const time_value time_value::start_time = time_value::gettimeofday();
 
 void time_value::normalize()
 {

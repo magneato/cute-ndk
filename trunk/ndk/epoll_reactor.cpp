@@ -72,15 +72,15 @@ int epoll_reactor_base::dispatch_io_events()
 {
   STRACE("");
   struct epoll_event *& pfd = this->start_pevents_;
-  int result = 0;
+  int count = 0;
   while (pfd < this->end_pevents_ && 
-         result < MAX_REACTOR_PROCESS_FDS_ONE_TIME)
+         count < MAX_REACTOR_PROCESS_FDS_ONE_TIME)
   {
     // 
     event_handler *eh = this->handler_rep_.find(pfd->data.fd);
     if (eh)
     {
-      ++result;
+      ++count;
       // Note that if there's an error(such as the handle was closed
       // without being removed from the event set) the EPOLLHUP and/or
       // EPOLLERR bits will be set in pfd->events.
@@ -110,18 +110,24 @@ int epoll_reactor_base::dispatch_io_events()
                                  event_handler::except_mask);
       }else if (NDK_BIT_ENABLED(pfd->events, EPOLLHUP | EPOLLERR))
       {
-        NDK_LOG("dispatch_io [handle = %d] trigger up/error [0x%x] events!",
-                pfd->data.fd,
-                pfd->events);
-        this->remove_handler_i(pfd->data.fd, 
-                               event_handler::all_events_mask);
         ++pfd;
+        int r = this->remove_handler_i(pfd->data.fd, 
+                                       event_handler::all_events_mask);
+        NDK_LOG("dispatch_io [handle = %d] trigger up/error [0x%x]"
+                " events![r = %d] startpe = %p endpe = %p curr = %p",
+                pfd->data.fd,
+                pfd->events,
+                r,
+                this->start_pevents_,
+                this->end_pevents_,
+                pfd);
+        continue;
       }else
       {
         NDK_LOG("dispatch_io [handle = %d] trigger unknown events 0x%x",
                 pfd->data.fd, 
                 pfd->events);
-        --result;
+        --count;
         if (pfd->events != 0) ++pfd;
       } 
       // If more than one event comes in between epoll_wait(2) calls,
@@ -130,15 +136,10 @@ int epoll_reactor_base::dispatch_io_events()
         ++pfd; 
     }else // if (eh)
     {
-#if 0
-      fprintf(stderr, 
-              "dispatch_io [handle = %d] not match event handler\n", 
-              pfd->data.fd);
-#endif
       ++pfd; 
     }
   } // while (pfd < this->end_pevents_ ...
-  return result;
+  return 0;
 }
 int epoll_reactor_base::reactor_mask_to_epoll_event(reactor_mask mask)
 {

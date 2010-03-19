@@ -1025,6 +1025,7 @@ void print_usage()
   printf("  -I  secs              Interval of every group request\n");
   printf("  -i  filename          Name of file where urls saved\n");
   printf("  -t  type              'biz' or 'sbs' or 'scs'\n");
+  printf("  -P  poll type         's'(select) or 'e'(epoll)\n");
   printf("  -p  number            Listen port(default is 8800)'\n");
 }
 void dump_memory(int )
@@ -1040,9 +1041,10 @@ int main(int argc, char *argv[])
   }
   signal(SIGHUP, dump_memory);
   int c = -1;
-  const char *opt = "c:k:I:i:t:p:";
+  const char *opt = "c:k:I:i:t:p:P:";
   extern int optind, optopt;
   std::string urls_filename;
+  std::string poll_type = "e";
   while ((c = getopt(argc, argv, opt)) != -1)
   {
     switch(c)
@@ -1072,6 +1074,9 @@ int main(int argc, char *argv[])
     case 'p':
       listen_port = ::atoi(optarg);
       break;
+    case 'P':
+      poll_type = optarg;
+      break;
     case ':':
       fprintf(stderr, "Option -%c requires an operand\n", optopt);
       return -1;
@@ -1087,17 +1092,27 @@ int main(int argc, char *argv[])
     return 0;
   }
   g_mem_pool.init(10*1024*1024, 20, 100);
-#if 1
-  ndk::epoll_reactor<ndk::reactor_null_token> *r_impl
-    = new ndk::epoll_reactor<ndk::reactor_null_token>();
-#else
-  ndk::select_reactor<ndk::reactor_null_token> *r_impl
-    = new ndk::select_reactor<ndk::reactor_null_token>();
-#endif
-  if (r_impl->open() != 0)
+  ndk::reactor_impl *r_impl = 0;
+  if (poll_type == "s")
   {
-    fprintf(stderr, "open epoll reactor failed\n");
-    return -1;
+    ndk::select_reactor<ndk::reactor_null_token> *r =
+      new ndk::select_reactor<ndk::reactor_null_token>();
+    if (r->open() != 0)
+    {
+      fprintf(stderr, "open select reactor failed\n");
+      return -1;
+    }
+    r_impl = r;
+  }else
+  {
+    ndk::epoll_reactor<ndk::reactor_null_token> *r = 
+      new ndk::epoll_reactor<ndk::reactor_null_token>();
+    if (r->open() != 0)
+    {
+      fprintf(stderr, "open epoll reactor failed\n");
+      return -1;
+    }
+    r_impl = r;
   }
   ndk::reactor::instance(new ndk::reactor(r_impl));
 
