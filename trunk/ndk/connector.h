@@ -13,9 +13,9 @@
 #include "ndk/types.h"
 #include "ndk/strace.h"
 #include "ndk/inet_addr.h"
+#include "ndk/sock_stream.h"
 #include "ndk/thread_mutex.h"
 #include "ndk/event_handler.h"
-#include "ndk/sock_connector.h"
 
 namespace ndk
 {
@@ -122,11 +122,16 @@ namespace ndk
                         const int reuse_addr = 0);
 
   protected:
+    int connect_i(sock_stream &new_stream,
+                  const inet_addr &remote_addr,
+                  const inet_addr &local_addr,
+                  int protocol_family,
+                  int reuse_addr,
+                  size_t recvbuf_size);
+
     int nonblocking_connect(svc_handler_t *sh, const time_value *timeout);
 
     void init_svc_handler(svc_handler_t *sh, ndk_handle handle);
-  protected:
-    sock_connector connector_;
   };
 } // namespace ndk
 #include "ndk/connector.cpp"

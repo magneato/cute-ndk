@@ -135,13 +135,12 @@ int connector<svc_handler_t>::connect(svc_handler_t *sh,
 
   sh->set_reactor(this->get_reactor());
 
-  int result = this->connector_.connect(sh->peer(),
-                                        remote_addr,
-                                        &time_value::zero,
-                                        local_addr,
-                                        AF_INET,
-                                        reuse_addr,
-                                        rcvbuf_size);
+  int result = this->connect_i(sh->peer(),
+                               remote_addr,
+                               local_addr,
+                               AF_INET,
+                               reuse_addr,
+                               rcvbuf_size);
 
   // Activate immediately if we are connected.
   if (result == 0)
@@ -150,7 +149,7 @@ int connector<svc_handler_t>::connect(svc_handler_t *sh,
     {
       sh->close(); return -1;
     }
-  }else if (errno == EWOULDBLOCK)
+  }else if (errno == EINPROGRESS)
   {
     if (timeout && *timeout == time_value::zero)
     {
@@ -214,6 +213,42 @@ void connector<svc_handler_t>::init_svc_handler(svc_handler_t *sh,
       return ;
   }
   sh->close(event_handler::connect_mask);
+}
+template<typename svc_handler_t>
+int connector<svc_handler_t>::connect_i(sock_stream &new_stream,
+                                        const inet_addr &remote_addr,
+                                        const inet_addr &local_addr,
+                                        int protocol_family,
+                                        int reuse_addr,
+                                        size_t recvbuf_size)
+{
+  if (new_stream.get_handle() == NDK_INVALID_HANDLE
+      && new_stream.open(SOCK_STREAM, protocol_family) == -1)
+    return -1;
+
+  // all of sockets create by framwork is nonblocked.
+  new_stream.set_nonblock();
+
+  sockaddr *laddr = reinterpret_cast<sockaddr *>(local_addr.get_addr());
+  int size = local_addr.get_addr_size();
+  if (::bind(new_stream.get_handle(), laddr, size) == -1)
+  {
+    new_stream.close();
+    return -1;
+  }
+
+  if (recvbuf_size != 0 &&
+      socket::set_rcvbuf(new_stream.get_handle(), recvbuf_size) == -1)
+  {
+    new_stream.close();
+    return -1;
+  }
+  if (reuse_addr)
+    socket::reuseaddr(new_stream.get_handle(), 1);
+
+  return ::connect(new_stream.get_handle(), 
+                   reinterpret_cast<sockaddr *>(remote_addr.get_addr()),
+                   remote_addr.get_addr_size());
 }
 } // namespace ndk
 #endif  // NDK_CONNECTOR_CPP_

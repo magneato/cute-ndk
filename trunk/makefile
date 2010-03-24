@@ -33,12 +33,9 @@
                                          cache_manager.cpp  \
                                          timer_queue.cpp  \
                                          thread.cpp  \
-                                         sock_acceptor.cpp  \
                                          thread_manager.cpp  \
                                          mem_pool.cpp  \
-                                         sock_connector.cpp  \
                                          time_value.cpp  \
-                                         cache_heap.cpp  \
                                          log_to_file.cpp  \
                                          reactor.cpp  \
                                          inet_addr.cpp  \

@@ -97,16 +97,14 @@ public:
     }
     this->cache_obj_ = 0;
   }
+  inline virtual void set_remote_addr(const ndk::inet_addr &remote_addr)
+  { this->remote_addr_ = remote_addr; }
+
   virtual int open(void *arg)
   {
     STRACE("");
-    ndk::inet_addr remote_addr;
-    if (this->peer().get_remote_addr(remote_addr) != 0)
-      net_log->error("get %d remote addr failed! [%s]",
-                     this->get_handle(),
-                     strerror(errno));
     char addr[32] = {0};  // 
-    remote_addr.addr_to_string(addr, sizeof(addr));
+    this->remote_addr_.addr_to_string(addr, sizeof(addr));
     net_log->debug("new connection [%s][%p]", addr, this);
     char *p = new char[4096];
     this->recv_buff_ = new ndk::message_block(p, 4095);
@@ -223,6 +221,7 @@ public:
           result = st.st_size;
           this->recv_buff_->reset();
           net_log->error("put cache to manager failed!");
+          ::munmap(data, st.st_size);
         }else
         {
           net_log->rinfo("hit [%s] failed! [refcount = %d][cobj = %p]", 
@@ -280,6 +279,7 @@ public:
   }
   int show_status()
   {
+    g_cache_manager->check();
     STRACE("");
     static int v1 = 10, v2 = 10, v3 = 10, v4 = 10; 
     static int v5 = 10, v6 = 10, v7 = 10, v8 = 10, v9 = 10;
@@ -405,6 +405,7 @@ protected:
   ndk::cache_object* cache_obj_;
   ndk::time_value begin_time_;
   ndk::message_block *recv_buff_;
+  ndk::inet_addr remote_addr_;
 };
 
 ndk::acceptor<http_client> *g_acceptor = 0;
@@ -418,6 +419,10 @@ void print_usage()
   printf("  -h  MB                Cache manager high water mark'\n");
   printf("  -l  MB                Cache manager low water mark'\n");
 }
+void dump_info(int )
+{
+  g_cache_manager->check();
+}
 int main(int argc, char *argv[])
 {
   if (argc == 1)
@@ -426,6 +431,7 @@ int main(int argc, char *argv[])
     return 0;
   }
   signal(SIGPIPE, SIG_IGN);
+  signal(SIGHUP, dump_info);
   int c = -1;
   const char *opt = "c:p:d:h:l:";
   extern int optind, optopt;

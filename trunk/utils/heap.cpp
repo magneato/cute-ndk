@@ -23,11 +23,11 @@ public:
     if (this->size_ >= this->max_size_)
       return -1;
     this->heap_[this->size_] = val;
-    this->shift_down(this->size_);
+    this->shift_up(this->size_);
     ++this->size_;
     return 0;
   }
-  void shift_down(int pos)
+  void shift_up(int pos)
   {
     int val = this->heap_[pos];
 
@@ -50,7 +50,7 @@ public:
     int val = this->heap_[0];
     --this->size_;
     this->heap_[0] = this->heap_[this->size_];
-    this->shift_up(0);
+    this->shift_down(0);
     return val;
   }
   int pop(int pos)
@@ -60,14 +60,13 @@ public:
     --this->size_;
     this->heap_[pos] = this->heap_[this->size_];
     int parent = (pos - 1) / 2;
-    if (pos == 0) parent = 0;
     if (this->heap_[this->size_] >= this->heap_[parent])
-      this->shift_up(pos);
-    else
       this->shift_down(pos);
+    else
+      this->shift_up(pos);
     return val;
   }
-  void shift_up(int pos)
+  void shift_down(int pos)
   {
     int val = this->heap_[pos];
 

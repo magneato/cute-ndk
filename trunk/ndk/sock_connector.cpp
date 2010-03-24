@@ -62,21 +62,15 @@ int sock_connector::nb_connect(sock_stream &new_stream,
 {
   STRACE("sock_connector");
   new_stream.set_nonblock();
-  int ret_val;
-  {
-  STRACE("");
-  ret_val = ::connect(new_stream.get_handle(),
+  int ret_val = ::connect(new_stream.get_handle(),
                           reinterpret_cast<sockaddr *>(remote_addr.get_addr()),
                           remote_addr.get_addr_size());
-  }
   int err_num = errno;
   if (ret_val == -1)
   {
-    if (err_num == EINPROGRESS || err_num == EWOULDBLOCK)
+    if (err_num == EINPROGRESS)
     {
-      if (*timeout == time_value::zero)
-        err_num = EWOULDBLOCK;
-      else
+      if (*timeout != time_value::zero)
       {
         ret_val = ndk::handle_ready(new_stream.get_handle(), 
                                     1, 
@@ -108,7 +102,7 @@ int sock_connector::nb_connect(sock_stream &new_stream,
   }
 
   new_stream.set_block();
-  if (ret_val == -1 && err_num != EWOULDBLOCK) 
+  if (ret_val == -1 && err_num != EINPROGRESS) 
     new_stream.close();
   if (ret_val == -1 && err_num != 0) 
     errno = err_num;

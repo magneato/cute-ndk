@@ -12,7 +12,6 @@
 
 #include "ndk/inet_addr.h"
 #include "ndk/sock_stream.h"
-#include "ndk/sock_acceptor.h"
 #include "ndk/event_handler.h"
 
 /**
@@ -50,6 +49,16 @@ namespace ndk
     // Close down the Acceptor
     virtual inline int close(void);
   protected:
+    // Accept a new connection and store remote addr to <remote_addr>.
+    ndk_handle accept_i(inet_addr *remote_addr);
+
+    // Create listen socket and bind to <local_addr>.
+    int open_i(const inet_addr &local_addr,
+               size_t rcvbuf_size,
+               int reuse_addr,
+               int protocol_family,
+               int backlog);
+
     // = The following three methods define the Acceptor's strategies
     // for creating, accepting, and activating svc_handler's,
     // respectively
@@ -85,14 +94,14 @@ namespace ndk
     // activates svc_handlers.
     virtual int handle_input(ndk_handle);
   private:
+    // Shared handle.
+    ndk_handle new_handle_;
+
     // For get new handle.
-    sock_stream my_peer_;
+    socket listener_;
 
-    // Needed to reopen the socket if {accept} fails.
-    inet_addr peer_acceptor_addr_;
-
-    // Socke Acceptor
-    sock_acceptor peer_acceptor_;
+    // Store the new connection's remote addr.
+    inet_addr shared_remote_addr_;
   };
 } // namespace ndk
 

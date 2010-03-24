@@ -25,6 +25,10 @@ namespace ndk
   class socket
   {
   public:
+    socket()
+    : handle_(NDK_INVALID_HANDLE)
+    { }
+
     virtual ~socket() { }
     //
     inline int open(int type, int protocol_family)
@@ -130,10 +134,6 @@ namespace ndk
                           &len);
     }
   protected:
-    socket()
-    : handle_(NDK_INVALID_HANDLE)
-    { }
-
     ndk_handle handle_;
   };
 } // namespace ndk
