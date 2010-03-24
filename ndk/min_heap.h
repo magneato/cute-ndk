@@ -100,6 +100,7 @@ namespace ndk
       if (this->heap_[item->heap_idx_] != item)
         return -1;
       this->pop(item->heap_idx_);
+      item->heap_idx_ = -1;
       //
       return this->push(item);
     }
@@ -111,18 +112,23 @@ namespace ndk
            i < this->size_; 
            ++i, parent = (i - 1) / 2)
       {
-#if 1
+#if 0
         assert(*(this->heap_[i]) >= *(this->heap_[parent]));
 #else
         if (*(this->heap_[i]) < *(this->heap_[parent]))
         {
+          fprintf(stderr, "item-%d's priority:%d > parent:%d's priority:%d\n",
+                  i, 
+                  this->heap_[i]->priority(),
+                  parent,
+                  this->heap_[parent]->priority());
           fprintf(stderr, "cache heap elements: ");
           for (int i = 0; i < this->size_; ++i)
           {
             fprintf(stderr, "i=%d\tpri=%d\t%p\n", 
                     i, 
                     this->heap_[i]->priority(),
-                    this->heap_[i]);
+                    this->heap_[i]->cobj_);
           }
           fprintf(stderr, "\n");
           fprintf(stderr, "cache heap sorted elements: ");
@@ -135,7 +141,7 @@ namespace ndk
             fprintf(stderr, "i=%d\tpri=%d\t%p\n", 
                     i++, 
                     item->priority(),
-                    item);
+                    item->cobj_);
           }
           fprintf(stderr, "\n");
           assert(0);

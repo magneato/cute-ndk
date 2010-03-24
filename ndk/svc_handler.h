@@ -82,6 +82,10 @@ namespace ndk
     sock_stream &peer() const
     { return(sock_stream &)this->peer_; }
 
+    // Store new connection's remote address.
+    virtual void set_remote_addr(const inet_addr &)
+    { }
+
     // Get the underlying handle associated with the <peer_>.
     virtual ndk_handle get_handle() const
     { return this->peer_.get_handle(); }

@@ -148,7 +148,6 @@ public:
     this->recv_buff_ = new ndk::message_block(p, 4095);
     this->connect_ok_ = 1;
     this->begin_time_ = ::time(0);
-    this->peer().set_nonblock();
     if (this->get_reactor() 
         && this->get_reactor()->register_handler(this, 
                                                  event_handler::read_mask) == -1)

@@ -29,7 +29,7 @@ int main ()
       item = fct.create(new int(10), 4, 0);
       item->acquire();
       hp.insert("cui", item);
-      usleep((rand() % 2000)*1000);
+      usleep((rand() % 200)*1000);
     }
     hp.dump();
   }

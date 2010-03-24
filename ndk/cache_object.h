@@ -43,8 +43,7 @@ namespace ndk
       data_(p),
       heap_item_(0),
       observer_(ob)
-    { 
-    }
+    { }
 
     inline virtual ~cache_object()
     {
@@ -129,9 +128,7 @@ namespace ndk
     { return static_cast<int>(this->last_access_); }
 
     inline virtual void acquire_i(void)
-    { 
-      this->last_access_ = ::time(0) - time_value::start_time.sec(); 
-    }
+    { this->last_access_ = ::time(0) - time_value::start_time.sec(); }
   protected:
     time_t last_access_;
   };

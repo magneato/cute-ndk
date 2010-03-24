@@ -56,6 +56,9 @@ namespace ndk
 
     // Removes lowest priority object from cache.
     int flush(void);
+
+    // Debug.
+    void check();
   protected:
     //
     cache_object *get_i(const KEY &key);
@@ -78,8 +81,8 @@ namespace ndk
     int flush_i(void); 
 
     int flush_i(const KEY &key); 
-
   protected:
+    //
     typedef std::map<KEY, cache_object *> cache_map_t;
     typedef typename std::map<KEY, cache_object *>::iterator cache_map_itor;
 

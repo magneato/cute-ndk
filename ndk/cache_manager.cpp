@@ -78,6 +78,8 @@ inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_i(const KEY &key)
   if (itor == this->cache_map_.end())
     return 0;
   itor->second->acquire();
+  if (this->cache_heap_->adjust(itor->second->heap_item()) != 0)
+    assert(0);
   return itor->second;
 }
 template<typename KEY, typename SYNCH_MUTEX>
@@ -98,6 +100,13 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
   if (this->make_cobj(data, size, ob, cobj) == -1)
     return -1;
 
+  cobj->acquire(); // update acquire record before insert to heap.
+  return this->put_ii(const KEY &key, cache_object *cobj);
+}
+template<typename KEY, typename SYNCH_MUTEX>
+inline int cache_manager<KEY, SYNCH_MUTEX>::put_ii(const KEY &key, 
+                                                  cache_object *&cobj)
+{
   std::pair<cache_map_itor, bool> ret = 
     this->cache_map_.insert(std::make_pair(key, cobj));
   if (!ret.second) // insert failed. the pair was actually inserted
@@ -105,21 +114,16 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
     NDK_LOG("warning: insert failed, the pair was actually inserted! [%s:%d]",
             __FILE__,
             __LINE__);
-    cache_object *old_obj = ret.first->second;
-
-    this->cache_heap_->remove(old_obj->heap_item()); // remove from heap.
-    this->cache_map_[key] = cobj; // update
-
-    this->water_mark_ -= old_obj->size();
-    this->drop_i(key, old_obj);
+    this->factory_->destroy(cobj);
+    cobj = 0;
+    return -1;
   }
-  if (0 == reput) cobj->acquire(); // update acquire record before insert to heap.
   if (this->cache_heap_->insert(key, cobj) != 0)
   {
     NDK_LOG("insert to heap failed![%s:%d]", __FILE__, __LINE__);
     this->cache_map_.erase(key);
-    if (0 == reput) cobj->release();
-    this->drop_i(key, cobj);
+    this->factory_->destroy(cobj);
+    cobj = 0;
     return -1;
   }
 
@@ -140,13 +144,9 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::drop_i(const KEY &key,
     result = 1;
   }else
   {
-    //fprintf(stdout, "refcount = %d  %d %p\n", cobj->refcount(), this->cache_map_.size(), cobj);
-    result = this->put_i(key, 
-                         cobj->data(), 
-                         cobj->size(), 
-                         cobj->observer(), 
-                         cobj, 
-                         1);
+    result = this->put_ii(key, cobj); 
+    this->factory_->destroy(cobj);
+    cobj = 0;
   }
   return result;
 }
@@ -175,12 +175,10 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
         NDK_LOG("error: flush error!");
         return -1;
       }
-      if (count++ > s)
-      {
-        this->cache_heap_->dump();
-        ::exit(0);
-      }
-    }while (this->water_mark_ > this->low_water_mark_);
+      ++count;
+    }while (this->water_mark_ > this->low_water_mark_
+            && count < s);  // avoid recursive, 
+                            // because: if the reference count of cache obj > 0,
   }
 
   // make sure heap has enough space. 
@@ -224,6 +222,11 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(const KEY &key)
   this->water_mark_ -= temp_obj->size();
   this->drop_i(key, temp_obj);
   return 0;
+}
+template<typename KEY, typename SYNCH_MUTEX>
+void cache_manager<KEY, SYNCH_MUTEX>::check(void)
+{
+  this->cache_heap_->check_heap();
 }
 } // namespace ndk
 #endif // NDK_CACHE_MANAGER_CPP_
