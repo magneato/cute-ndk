@@ -160,11 +160,11 @@ namespace ndk
     }
 
     // set '\0' to the special pos.
-    // if <pos> is -1, the pos equal message_block::length().
+    // if <pos> is -1, the pos equal message_block::wr_ptr().
     inline void set_eof(const int pos = -1)
     {
       if (pos == -1)
-        this->mb_data_[this->length()] = '\0';
+        this->mb_data_[this->wr_ptr] = '\0';
       else
         this->mb_data_[pos] = '\0';
     }

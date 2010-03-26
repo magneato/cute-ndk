@@ -12,6 +12,7 @@
 
 #include "ndk/heap.h"
 #include "ndk/config.h"
+#include "ndk/strace.h"
 #include "ndk/cache_object.h"
 #include "ndk/global_macros.h"
 
