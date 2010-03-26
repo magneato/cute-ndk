@@ -4,7 +4,7 @@
 #include <cassert>
 
 #include "ndk/cache_heap.h"
-#include "ndk/min_heap.h"
+#include "ndk/heap.h"
 
 class heap_item
 {
@@ -30,7 +30,11 @@ int main ()
 {
   srand(time(0));
 
+#if 0
   ndk::min_heap<heap_item> h(1024*2);
+#else
+  ndk::max_heap<heap_item> h(1024*2);
+#endif
   for (int i = 0; i < 400; ++i)
   {
     h.push(new heap_item(rand() % 1000));

@@ -15,12 +15,12 @@
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                 MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG#-DNDK_STRACE
                                     CC = gcc
-                            CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC -fno-inline
+                            CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make
                                 LINKER = g++
                           INCLUDE_DIRS = -I .
                                   LIBS = -lpthread
-                            OPTIM_FLAG = #-O2
+                            OPTIM_FLAG = -O2
                                    CPP = g++
                                 LFLAGS = -Wl -shared -fPIC
                               LIB_DIRS =

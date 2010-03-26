@@ -168,16 +168,15 @@ int unix_reactor::handle_events_i(const time_value *max_wait_time)
     result = this->poll_events_i(max_wait_time);
   }while (result == -1 && errno == EINTR);
 
-  // timeout
-  if (result == 0)
-    return 0;
-  else if (result == -1 && errno != EINTR)
-  {
-    NDK_LOG("warning: %s", strerror(errno));
-    return result;
-  }
   // Dispatch an event.
-  return this->dispatch_events();
+  if (result > 0)
+    return this->dispatch_events();
+
+#ifdef NDK_RTLOG
+  if (result == -1)
+    NDK_LOG("error: handle_events_i: [%s]", strerror(errno));
+#endif
+  return result;
 }
 int unix_reactor::dispatch_events()
 {
@@ -241,7 +240,10 @@ int unix_reactor::remove_handler_i(ndk_handle handle,
   NDK_CLR_BITS(new_mask, mask);
   this->handler_rep_.mask(handle, new_mask);
 
-  if (this->handle_opt_i(handle, new_mask, unix_reactor::clr_mask) == -1)
+  int t = unix_reactor::clr_mask;
+  if (new_mask != event_handler::null_mask)
+    t = unix_reactor::set_mask;
+  if (this->handle_opt_i(handle, new_mask, t) == -1)
     return -1;
 
   // If there are no longer any outstanding events on the given handle

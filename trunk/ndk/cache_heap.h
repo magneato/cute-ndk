@@ -10,8 +10,8 @@
 #ifndef NDK_CACHE_HEAP_H_
 #define NDK_CACHE_HEAP_H_
 
+#include "ndk/heap.h"
 #include "ndk/config.h"
-#include "ndk/min_heap.h"
 #include "ndk/cache_object.h"
 #include "ndk/global_macros.h"
 
@@ -30,34 +30,40 @@ namespace ndk
   public:
     typedef cache_heap_item<KEY> cache_heap_item_t;
 
-    cache_heap(int max_size)
+    cache_heap(int min_or_max/* min = 0 max = 1*/, int max_size)
     : free_heap_items_(0),
-    min_heap_(0)
+    heap_(0)
     {
       STRACE("");
-      min_heap_ = new min_heap<cache_heap_item_t>(max_size);
+      if (min_or_max == 0/*min*/)
+        heap_ = new min_heap<cache_heap_item_t>(max_size);
+      else
+        heap_ = new max_heap<cache_heap_item_t>(max_size);
     }
 
     //
     inline bool is_empty(void) const
-    { return this->min_heap_->is_empty(); }
+    { return this->heap_->is_empty(); }
 
-    bool is_full(void) const
-    { return this->min_heap_->is_full(); }
+    inline bool is_full(void) const
+    { return this->heap_->is_full(); }
+
+    inline int size(void) const
+    { return this->heap_->size(); }
 
     inline int insert(const KEY &key, cache_object *cobj)
     {
       STRACE("");
-      if (this->min_heap_->is_full()) return -1;
+      if (this->heap_->is_full()) return -1;
       cache_heap_item_t *item = this->alloc_item(key, cobj);
       if (item == 0) return -1;
-      return this->min_heap_->push(item);
+      return this->heap_->push(item);
     }
 
     inline int remove(KEY &key, cache_object *&cobj)
     {
       STRACE("");
-      cache_heap_item_t *item = this->min_heap_->pop(0);
+      cache_heap_item_t *item = this->heap_->pop(0);
       if (item == 0) return -1;
       key  = item->obj_id_;
       cobj = item->cobj_;
@@ -73,7 +79,7 @@ namespace ndk
         reinterpret_cast<cache_heap_item_t *>(item);
 
       real_item->cobj_->heap_item(0);
-      if (this->min_heap_->erase(real_item) == 0)
+      if (this->heap_->erase(real_item) == 0)
       {
         this->release_item(real_item); //
         return 0;
@@ -88,13 +94,16 @@ namespace ndk
       if (item == 0) return -1;
       cache_heap_item_t *real_item = 
         reinterpret_cast<cache_heap_item_t *>(item);
-      return this->min_heap_->adjust(real_item);
+      //return this->heap_->adjust(real_item);
+      this->heap_->erase(real_item);
+      real_item->cobj_->acquire();
+      return this->heap_->push(real_item);
     }
 
     void check_heap(void)
     {
       STRACE("");
-      this->min_heap_->check_heap();
+      this->heap_->check_heap();
     }
 
     // release 
@@ -104,7 +113,7 @@ namespace ndk
       cache_heap_item_t *item = 0;
       do
       {
-        item = this->min_heap_->pop();
+        item = this->heap_->pop();
         this->release_item(item);
       }while (item != 0);
 
@@ -116,9 +125,9 @@ namespace ndk
       }
       this->free_heap_items_ = 0;
 
-      if (this->min_heap_)
-        delete this->min_heap_;
-      this->min_heap_ = 0;
+      if (this->heap_)
+        delete this->heap_;
+      this->heap_ = 0;
     }
 
   protected:
@@ -144,7 +153,7 @@ namespace ndk
   private:
     cache_heap_item_t *free_heap_items_;
 
-    min_heap<cache_heap_item_t> *min_heap_;
+    heap<cache_heap_item_t> *heap_;
   };
 
   /**
@@ -156,7 +165,6 @@ namespace ndk
   class cache_heap_item
   {
     friend class cache_heap<KEY>;
-    friend class min_heap<cache_heap_item>;
   public:
     cache_heap_item(const KEY &key, cache_object *obj)
       : heap_idx_(-1),
@@ -198,9 +206,10 @@ namespace ndk
 
     inline void next(cache_heap_item<KEY> *val)
     { this->next_ = val;  }
-  protected:
+  public:
     int  heap_idx_;
 
+  protected:
     KEY  obj_id_;
     cache_object *cobj_;
     cache_heap_item<KEY> *next_;

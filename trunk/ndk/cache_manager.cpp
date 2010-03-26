@@ -23,12 +23,12 @@ cache_manager<KEY, SYNCH_MUTEX>::cache_manager(int max_size,
   water_mark_(0),
   high_water_mark_(high_water_mark * 1024 * 1024),
   low_water_mark_(low_water_mark * 1024 * 1024),
-  factory_(cof)
+  cobj_factory_(cof)
 {
   STRACE("");
-  if (factory_ == 0)
-    factory_ = new lru_cache_object_factory();
-  cache_heap_ = new cache_heap<KEY>(max_size);
+  if (cobj_factory_ == 0)
+    cobj_factory_ = new lru_cache_object_factory();
+  cache_heap_ = new cache_heap<KEY>(0, max_size);
 }
 template<typename KEY, typename SYNCH_MUTEX>
 cache_manager<KEY, SYNCH_MUTEX>::~cache_manager()
@@ -76,10 +76,12 @@ inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_i(const KEY &key)
   STRACE("");
   cache_map_itor itor = this->cache_map_.find(key);
   if (itor == this->cache_map_.end())
-    return 0;
-  itor->second->acquire();
-  if (this->cache_heap_->adjust(itor->second->heap_item()) != 0)
-    assert(0);
+    // try to find <key> in pending list.
+    return this->get_pending_obj(key);
+
+  // this method will call cache_object::acquire to update priority.
+  this->cache_heap_->adjust(itor->second->heap_item());
+
   return itor->second;
 }
 template<typename KEY, typename SYNCH_MUTEX>
@@ -87,26 +89,16 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
                                                   void *data,
                                                   size_t size,
                                                   cache_object_observer *ob,
-                                                  cache_object *&cobj,
-                                                  int reput/* = 0*/)
+                                                  cache_object *&cobj)
 {
   STRACE("");
-  if (data == 0) 
-  {
-    this->flush_i(key); // 
-    cobj = 0;
-    return 0;
-  }
+  if (data == 0)  return -1;
+
+  // # get an new objects by factory.
   if (this->make_cobj(data, size, ob, cobj) == -1)
     return -1;
 
-  cobj->acquire(); // update acquire record before insert to heap.
-  return this->put_ii(const KEY &key, cache_object *cobj);
-}
-template<typename KEY, typename SYNCH_MUTEX>
-inline int cache_manager<KEY, SYNCH_MUTEX>::put_ii(const KEY &key, 
-                                                  cache_object *&cobj)
-{
+  // # insert to map.
   std::pair<cache_map_itor, bool> ret = 
     this->cache_map_.insert(std::make_pair(key, cobj));
   if (!ret.second) // insert failed. the pair was actually inserted
@@ -114,41 +106,43 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_ii(const KEY &key,
     NDK_LOG("warning: insert failed, the pair was actually inserted! [%s:%d]",
             __FILE__,
             __LINE__);
-    this->factory_->destroy(cobj);
-    cobj = 0;
-    return -1;
-  }
-  if (this->cache_heap_->insert(key, cobj) != 0)
-  {
-    NDK_LOG("insert to heap failed![%s:%d]", __FILE__, __LINE__);
-    this->cache_map_.erase(key);
-    this->factory_->destroy(cobj);
+    this->cobj_factory_->destroy(cobj);
     cobj = 0;
     return -1;
   }
 
+  // # build priority before push to heap.
+  cobj->acquire(); // update acquire record before insert to heap.
+
+  // # push to heap.
+  if (this->cache_heap_->insert(key, cobj) != 0)
+  {
+    NDK_LOG("insert to heap failed![%s:%d]", __FILE__, __LINE__);
+    this->cache_map_.erase(key);
+    this->cobj_factory_->destroy(cobj);
+    cobj = 0;
+    return -1;
+  }
+
+  // # increase current water mark.
   this->water_mark_ += cobj->size();
   return 0;
 }
 template<typename KEY, typename SYNCH_MUTEX>
 inline int cache_manager<KEY, SYNCH_MUTEX>::drop_i(const KEY &key, 
-                                                   cache_object *&cobj)
+                                                   cache_object *cobj)
 {
   STRACE("");
-  int result = 0;
   if (cobj->refcount() == 0)
   {
     cobj->drop();
-    this->factory_->destroy(cobj);
-    cobj = 0;
-    result = 1;
+    this->cobj_factory_->destroy(cobj);
   }else
   {
-    result = this->put_ii(key, cobj); 
-    this->factory_->destroy(cobj);
-    cobj = 0;
+    this->pending_list_.insert(std::make_pair(key, cobj));
+    return -1;
   }
-  return result;
+  return 0;
 }
 template<typename KEY, typename SYNCH_MUTEX>
 inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data, 
@@ -163,11 +157,11 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
     NDK_LOG("error: [%u] is too small/large to cache", size);
     return -1;
   }
+
+  // # check water mark.
   if (size + this->water_mark_ > this->high_water_mark_)
   {
-    // drop some object.
-    int count = 0;  // for test
-    int s = this->cache_map_.size();
+    // drop some cache-objects.
     do
     {
       if (this->flush_i() == -1)
@@ -175,36 +169,84 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
         NDK_LOG("error: flush error!");
         return -1;
       }
-      ++count;
-    }while (this->water_mark_ > this->low_water_mark_
-            && count < s);  // avoid recursive, 
-                            // because: if the reference count of cache obj > 0,
+    }while (this->water_mark_ > this->low_water_mark_);
   }
 
-  // make sure heap has enough space. 
-  if (this->cache_heap_->is_full())
-  {
-    NDK_LOG("heap is full, flushing...");
-    if (this->flush_i() == -1)
-    {
-      NDK_LOG("flush error![%s:%d]", __FILE__, __LINE__);
-      return -1;
-    }
-  }
-  obj = this->factory_->create(data, size, ob);
+  // # object factory.
+  obj = this->cobj_factory_->create(data, size, ob);
   return 0;
 }
 template<typename KEY, typename SYNCH_MUTEX>
 inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(void)
 {
   STRACE("");
+
+  // 1. drop all of pending objs.
+  if (this->flush_pending_objs() == 0) return 0;
+
+  // 2.
   KEY temp_key;
   cache_object *temp_obj = 0;
   if (this->cache_heap_->remove(temp_key, temp_obj) == 0)
   {
     this->cache_map_.erase(temp_key);
-    this->water_mark_ -= temp_obj->size();
-    return this->drop_i(temp_key, temp_obj);
+    size_t s = temp_obj->size();
+    if (this->drop_i(temp_key, temp_obj) == 0)
+      this->water_mark_ -= s;
+    return 0;
+  }
+  return -1;
+}
+template<typename KEY, typename SYNCH_MUTEX>
+inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_pending_obj(const KEY &key)
+{
+  if (!this->pending_list_.empty())
+  {
+    cache_map_itor pos = this->pending_list_.find(key);
+    if (pos != this->pending_list_.end())
+      return pos->second;
+  }
+  return 0;
+}
+template<typename KEY, typename SYNCH_MUTEX>
+int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs()
+{
+  if (!this->pending_list_.empty())
+  {
+    cache_map_itor itor = this->pending_list_.begin();
+    for (; itor != this->pending_list_.end();)
+    {
+      if (itor->second->refcount() == 0)
+      {
+        this->water_mark_ -= itor->second->size();
+        itor->second->drop();
+        this->cobj_factory_->destroy(itor->second);
+        this->pending_list_.erase(itor++);
+      }else
+        ++itor;
+    }
+    if (this->water_mark_ <= this->low_water_mark_)
+      return 0;
+  }
+  return -1;
+}
+template<typename KEY, typename SYNCH_MUTEX>
+int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs(const KEY &key)
+{
+  if (!this->pending_list_.empty())
+  {
+    cache_map_itor pos = this->pending_list_->find(key);
+    if (pos != this->pending_list_.end())
+    {
+      if (pos->second->refcount() == 0)
+      {
+        this->water_mark_ -= pos->second->size();
+        pos->second->drop();
+        this->cobj_factory_->destroy(pos->second);
+        this->pending_list_.erase(pos);
+        return 0;
+      }
+    }
   }
   return -1;
 }
@@ -214,14 +256,17 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(const KEY &key)
   STRACE("");
   cache_map_itor itor = this->cache_map_.find(key);
   if (itor == this->cache_map_.end())
-    return -1;
+    return this->flush_pending_objs(key);
+
   cache_object *temp_obj = itor->second;
   this->cache_map_.erase(itor);
 
   this->cache_heap_->remove(temp_obj->heap_item());
-  this->water_mark_ -= temp_obj->size();
-  this->drop_i(key, temp_obj);
-  return 0;
+  size_t s = temp_obj->size();
+  int result = this->drop_i(key, temp_obj);
+  if (result == 0)
+    this->water_mark_ -= s;
+  return result;
 }
 template<typename KEY, typename SYNCH_MUTEX>
 void cache_manager<KEY, SYNCH_MUTEX>::check(void)
