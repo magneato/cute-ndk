@@ -69,6 +69,11 @@ namespace ndk
                                       const time_value & /*curent_time*/)
     { return -1; }
 
+    // For notify mechanism.
+    // The handle_close(const void *, reactor_mask) will be called if return -1.
+    inline virtual int handle_msg(void * /*msg*/)
+    { return -1; }
+
     //
     inline virtual int handle_close(ndk_handle /*handle*/, reactor_mask /*mask*/)
     { return -1; }

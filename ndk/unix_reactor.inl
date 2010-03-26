@@ -63,20 +63,62 @@ int unix_reactor_handler_repository::is_invalid_handle(ndk_handle handle) const
 }
 // --------------------------------------------------------------------------
 inline
-int unix_reactor_notify::read_notify_pipe(ndk_handle ,
-                                          notification_buffer &buffer)
+unix_reactor_notify_tuple *unix_reactor_notify::alloc_notify_tuple(event_handler *eh,
+                                                                   void *msg)
 {
-  return ndk::read(this->notification_pipe_.read_handle(),
-                   (char *)&buffer,
-                   sizeof(buffer));
+  unix_reactor_notify_tuple *tuple = 0;
+  if (this->free_notify_msg_queue_ == 0)
+    this->free_notify_msg_queue_ = new unix_reactor_notify_tuple(eh, msg);
+  tuple = this->free_notify_msg_queue_;
+  this->free_notify_msg_queue_ = this->free_notify_msg_queue_->next();
+  tuple->next(0);
+  return tuple;
 }
 inline
-int unix_reactor_notify::handle_input(ndk_handle handle)
+void unix_reactor_notify::release_notify_tuple(unix_reactor_notify_tuple *tuple)
 {
-  STRACE("");
-  notification_buffer buffer;
-  this->read_notify_pipe(handle, buffer);
-  return 0;
+  if (tuple == 0) return ;
+  tuple->next(this->free_notify_msg_queue_);
+  this->free_notify_msg_queue_ = tuple;
+}
+inline
+void unix_reactor_notify::push_notify_tuple(unix_reactor_notify_tuple *tuple)
+{
+  if (this->notify_msg_queue_tail_ == 0)
+    this->notify_msg_queue_ = tuple;
+  else
+    this->notify_msg_queue_tail_->next(tuple);
+  this->notify_msg_queue_tail_ = tuple;
+}
+inline
+unix_reactor_notify_tuple *unix_reactor_notify::pop_notify_tuple()
+{
+  unix_reactor_notify_tuple *tuple = 0;
+  if (this->notify_msg_queue_)
+  {
+    tuple = this->notify_msg_queue_;
+    this->notify_msg_queue_ = this->notify_msg_queue_->next();
+    if (this->notify_msg_queue_ == 0)
+      this->notify_msg_queue_tail_ = 0;
+  }
+  return tuple;
+}
+inline
+int unix_reactor_notify::read_notify_msg(unix_reactor_notify_tuple *free_tuple,
+                                         unix_reactor_notify_tuple *&tuple)
+{
+  guard<notify_mtx> g(this->notify_mutex_);
+  this->release_notify_tuple(free_tuple);
+  char a;
+  int result = ndk::read(this->notification_pipe_.read_handle(),
+                         &a,
+                         1);
+  if (result != -1)
+  {
+    tuple = this->pop_notify_tuple();
+    return 0;
+  }
+  return -1;
 }
 inline
 ndk_handle unix_reactor_notify::notify_handle()

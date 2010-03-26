@@ -49,7 +49,7 @@ namespace ndk
     inline virtual void sleep_hook(void)
     {
       if (this->reactor_)
-        this->reactor_->notify();
+        this->reactor_->notify(0, 0);
     }
   private:
     reactor_impl *reactor_;

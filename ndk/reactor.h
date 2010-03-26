@@ -202,8 +202,8 @@ namespace ndk
      * Handler will be dispatched irrespective of whether it is
      * registered, not registered, or suspended in the Reactor.
      */
-    int notify(event_handler *eh = 0,
-               reactor_mask mask = event_handler::except_mask);
+    int notify(event_handler *eh, void *msg);
+
     /**
      * Purge any notifications pending in this reactor for the specified
      * event_handler object. If eh == 0, all notifications for
