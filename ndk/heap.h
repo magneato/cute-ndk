@@ -7,8 +7,10 @@
  */
 //========================================================================
 
-#ifndef NDK_MIN_HEAP_H_
-#define NDK_MIN_HEAP_H_
+#ifndef NDK_HEAP_H_
+#define NDK_HEAP_H_
+
+#include "ndk/config.h"
 
 #include <cassert>
 
@@ -23,7 +25,16 @@ namespace ndk
   class heap
   {
   public:
-    ~heap()
+    heap(int max_size)
+    : max_size_(max_size),
+    size_(0),
+    heap_(0)
+    {
+      heap_ = new ITEM *[max_size_];
+      for (int i = 0; i < max_size_; ++i) heap_[i] = 0;
+    }
+
+    virtual ~heap()
     {
       if (this->heap_)
         delete []this->heap_;
@@ -39,9 +50,10 @@ namespace ndk
     inline int size() const
     { return this->size_; }
 
+    /// virtual method.
     // return  0 on push successfully.
     // return -1 on failed.
-    inline int push(ITEM *item)
+    inline virtual int push(ITEM *item)
     {
       if (this->size_ >= this->max_size_)
         return -1;
@@ -51,7 +63,7 @@ namespace ndk
 
     // return the pointer of the first of ITEM in heap.
     // return 0 on failed.
-    inline ITEM *pop()
+    inline virtual ITEM *pop()
     {
       if (this->size_ == 0) return 0;
       ITEM *item = this->heap_[0];
@@ -59,9 +71,13 @@ namespace ndk
       return item;
     }
 
+    // return the pointer of the ITEM which heap_idx is <idx> in heap.
+    // return 0 on failed.
+    virtual ITEM *pop(int idx) = 0;
+
     // return  0 on erase <item> ok.
     // return -1 on failed.
-    inline int erase(ITEM *item)
+    inline virtual int erase(ITEM *item)
     {
       if (item == 0) return -1;
       return this->pop(item->heap_idx_) == 0 ? -1 : 0;
@@ -69,8 +85,9 @@ namespace ndk
 
     // adjust ths position of item.
     // you must call this method if you reset the priority of the <item>.
-    int adjust(ITEM *item)
+    inline virtual int adjust(ITEM *item)
     {
+      assert(0);
       if (item == 0) return -1;
 
       assert(this->heap_[item->heap_idx_] == item);
@@ -81,16 +98,16 @@ namespace ndk
       //
       return this->push(item);
     }
+
+    // for debug
+    virtual void check_heap() = 0;
   protected:
-    heap(int max_size)
-    : max_size_(max_size),
-    size_(0),
-    heap_(0)
-    {
-      heap_ = new ITEM *[max_size_];
-      for (int i = 0; i < max_size_; ++i) heap_[i] = 0;
-    }
-  private:
+    //
+    virtual void shift_up(int pos, ITEM *moved_item) = 0;
+
+    //
+    virtual void shift_down(int pos, ITEM *moved_item) = 0;
+  protected:
     // Max capbility of heap.
     int max_size_;
 
@@ -107,19 +124,19 @@ namespace ndk
    * @brief
    */
   template<typename ITEM>
-  class min_heap
+  class min_heap : public heap<ITEM>
   {
   public:
     min_heap(int max_size)
-    : heap(max_size)
+    : heap<ITEM>(max_size)
     { }
 
-    ~min_heap()
+    virtual ~min_heap()
     { }
 
     // return the pointer of the ITEM which heap_idx is <idx> in heap.
     // return 0 on failed.
-    inline ITEM *pop(int idx)
+    virtual ITEM *pop(int idx)
     {
       if (this->size_ == 0 || idx < 0) return 0;
       ITEM *item = this->heap_[idx];
@@ -135,13 +152,13 @@ namespace ndk
     }
 
     // for debug
-    void check_heap()
+    virtual void check_heap()
     {
       for (int i = 0, parent = 0; 
            i < this->size_; 
            ++i, parent = (i - 1) / 2)
       {
-#if 0
+#if 1
         assert(*(this->heap_[i]) >= *(this->heap_[parent]));
 #else
         if (*(this->heap_[i]) < *(this->heap_[parent]))
@@ -217,19 +234,19 @@ namespace ndk
    * @brief
    */
   template<typename ITEM>
-  class max_heap
+  class max_heap : public heap<ITEM>
   {
   public:
     max_heap(int max_size)
-    : heap(max_size)
+    : heap<ITEM>(max_size)
     { }
 
-    ~max_heap()
+    virtual ~max_heap()
     { }
 
     // return the pointer of the ITEM which heap_idx is <idx> in heap.
     // return 0 on failed.
-    inline ITEM *pop(int idx)
+    virtual ITEM *pop(int idx)
     {
       if (this->size_ == 0 || idx < 0) return 0;
       ITEM *item = this->heap_[idx];
@@ -251,8 +268,8 @@ namespace ndk
            i < this->size_; 
            ++i, parent = (i - 1) / 2)
       {
-#if 0
-        assert(*(this->heap_[i]) >= *(this->heap_[parent]));
+#if 1
+        assert(*(this->heap_[i]) <= *(this->heap_[parent]));
 #else
         if (*(this->heap_[i]) > *(this->heap_[parent]))
         {
@@ -322,5 +339,5 @@ namespace ndk
   }; // max_heap
 } // namespace ndk
 
-#endif // NDK_MIN_HEAP_H_
+#endif // NDK_HEAP_H_
 

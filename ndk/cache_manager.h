@@ -67,20 +67,32 @@ namespace ndk
     int put_i(const KEY &key, void *data,
               size_t size,
               cache_object_observer *ob,
-              cache_object *&cobj,
-              int reput = 0);
+              cache_object *&cobj);
+    //
+    int put_ii(const KEY &key, cache_object *&cobj);
 
+    //
     int make_cobj(void *data, size_t size, 
                   cache_object_observer *ob,
                   cache_object *&obj);
 
     //
-    int drop_i(const KEY &key, cache_object *&cobj);
+    int drop_i(const KEY &key, cache_object *cobj);
 
     //
     int flush_i(void); 
 
     int flush_i(const KEY &key); 
+
+    // pending objects opertions.
+    //
+    int flush_pending_objs(const KEY &key);
+
+    //
+    int flush_pending_objs();
+
+    //
+    cache_object *get_pending_obj(const KEY &key);
   protected:
     //
     typedef std::map<KEY, cache_object *> cache_map_t;
@@ -99,11 +111,15 @@ namespace ndk
 
     SYNCH_MUTEX cache_mutex_;
 
+    // store hot cache objects.
     cache_map_t cache_map_;  // For fast querying
 
     cache_heap<KEY> *cache_heap_;  // For fast getting cobj need to drop.
 
-    cache_object_factory *factory_;
+    // store pending objects that refcount > 0
+    cache_map_t pending_list_;
+
+    cache_object_factory *cobj_factory_;
   };
 } // namespace ndk
 

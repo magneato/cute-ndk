@@ -49,7 +49,7 @@ int epoll_reactor_base::close_i()
   if (this->events_)
     delete [] this->events_;
   this->events_ = 0;          
-  this->initialized_   = false;
+  this->initialized_ = false;
   return unix_reactor::close_ii();
 }
 int epoll_reactor_base::poll_events(const time_value *timeout)
@@ -81,9 +81,6 @@ int epoll_reactor_base::dispatch_io_events()
     if (eh)
     {
       ++count;
-      // Note that if there's an error(such as the handle was closed
-      // without being removed from the event set) the EPOLLHUP and/or
-      // EPOLLERR bits will be set in pfd->events.
       if (NDK_BIT_ENABLED(pfd->events, EPOLLIN))
       {
         NDK_CLR_BITS(pfd->events, EPOLLIN);
@@ -109,8 +106,10 @@ int epoll_reactor_base::dispatch_io_events()
           this->remove_handler_i(pfd->data.fd, 
                                  event_handler::except_mask);
       }else if (NDK_BIT_ENABLED(pfd->events, EPOLLHUP | EPOLLERR))
+      // Note that if there's an error(such as the handle was closed
+      // without being removed from the event set) the EPOLLHUP and/or
+      // EPOLLERR bits will be set in pfd->events.
       {
-        ++pfd;
         int r = this->remove_handler_i(pfd->data.fd, 
                                        event_handler::all_events_mask);
         NDK_LOG("dispatch_io [handle = %d] trigger up/error [0x%x]"
@@ -121,19 +120,19 @@ int epoll_reactor_base::dispatch_io_events()
                 this->start_pevents_,
                 this->end_pevents_,
                 pfd);
+        ++pfd;
         continue;
       }else
       {
         NDK_LOG("dispatch_io [handle = %d] trigger unknown events 0x%x",
                 pfd->data.fd, 
                 pfd->events);
-        --count;
-        if (pfd->events != 0) ++pfd;
+        ++pfd;
+        continue;
       } 
       // If more than one event comes in between epoll_wait(2) calls,
       // they will be combined reported.
-      if (pfd->events == 0)
-        ++pfd; 
+      if (pfd->events == 0) ++pfd; 
     }else // if (eh)
     {
       ++pfd; 
@@ -174,19 +173,19 @@ int epoll_reactor_base::handle_opt_i(ndk_handle handle,
   std::memset(&epev, 0, sizeof(epev));
   epev.data.fd = handle;
 
-  if (mask == event_handler::null_mask)
-    opt = unix_reactor::clr_mask;
-  else if (opt == unix_reactor::clr_mask)
-    opt = unix_reactor::set_mask;
-
   switch(opt)
   {
   case unix_reactor::add_mask: 
     epev.events = this->reactor_mask_to_epoll_event(mask);
-    return ::epoll_ctl(this->epoll_fd_, 
-                       EPOLL_CTL_ADD, 
-                       handle, 
-                       &epev);	
+    if (::epoll_ctl(this->epoll_fd_, 
+                    EPOLL_CTL_ADD, 
+                    handle, 
+                    &epev) == -1)	
+    { 
+      NDK_LOG("warning: epoll_ctl add [%s]", strerror(errno));
+      if (errno != EEXIST) return -1; 
+    }
+    break;
   case unix_reactor::set_mask: 
     epev.events = this->reactor_mask_to_epoll_event(mask);
     if (::epoll_ctl(this->epoll_fd_, 
@@ -194,7 +193,7 @@ int epoll_reactor_base::handle_opt_i(ndk_handle handle,
                     handle, 
                     &epev) == -1)
     {
-      NDK_LOG("epoll_ctl [%s]", strerror(errno));
+      NDK_LOG("warning: epoll_ctl mod [%s]", strerror(errno));
       // If a handle is closed, epoll removes it from the poll set
       // automatically - we may not know about it yet. If that's the
       // case, a mod operation will fail with ENOENT. Retry it as
@@ -207,10 +206,15 @@ int epoll_reactor_base::handle_opt_i(ndk_handle handle,
     }
     break;
   case unix_reactor::clr_mask: 
-    return ::epoll_ctl(this->epoll_fd_, 
-                       EPOLL_CTL_DEL, 
-                       handle, 
-                       &epev);	
+    if (::epoll_ctl(this->epoll_fd_, 
+                    EPOLL_CTL_DEL, 
+                    handle, 
+                    &epev) == -1)
+    {
+      NDK_LOG("warning: epoll_ctl del [%s]", strerror(errno));
+      if (errno != ENOENT) return -1;
+    }
+    break;
   default: return -1;
   }
   return 0;
