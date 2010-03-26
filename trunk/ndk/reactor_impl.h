@@ -194,7 +194,7 @@ namespace ndk
      * Handler will be dispatched irrespective of whether it is
      * registered, not registered, or suspended in the Reactor.
      */
-    virtual int notify(event_handler *eh, void *msg);
+    virtual int notify(event_handler *eh, void *msg) = 0;
 
      /**
       * Purge any notifications pending in this reactor for the specified
