@@ -33,6 +33,7 @@ static ndk::logger *net_log = ndk::log_manager::instance()->get_logger("root.fca
 
 // global vars
 int g_requests       = 0;
+int g_request_ok     = 0;
 int g_finished       = 0;
 int g_hit            = 0;
 int g_miss           = 0;
@@ -254,6 +255,7 @@ public:
                        strerror(errno));
         return -1;
       }
+      ++g_request_ok;
     }
     return this->response_client(result);
   }
@@ -317,10 +319,10 @@ public:
       << std::endl;
     int hrate  = 0;
     if (g_finished > 0)
-      hrate = g_hit * 100 / g_finished;
+      hrate = g_hit * 100 / g_request_ok;
     int mrate = 0;
     if (g_finished > 0)
-      mrate = g_miss * 100 / g_finished;
+      mrate = g_miss * 100 / g_request_ok;
     ostr << std::setw(requests_w) << g_requests
       << std::setw(finished_w) << g_finished
       << std::setw(hit_w) << g_hit
