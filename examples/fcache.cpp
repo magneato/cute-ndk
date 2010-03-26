@@ -78,10 +78,7 @@ public:
   {
     STRACE("");
     if (this->recv_buff_)
-    {
-      delete [](char *)this->recv_buff_->data();
       this->recv_buff_->release();
-    }
     this->recv_buff_ = 0;
 
     if (this->file_handle_ != NDK_INVALID_HANDLE)
@@ -106,9 +103,8 @@ public:
     STRACE("");
     char addr[32] = {0};  // 
     this->remote_addr_.addr_to_string(addr, sizeof(addr));
-    net_log->debug("new connection [%s][%p]", addr, this);
-    char *p = new char[4096];
-    this->recv_buff_ = new ndk::message_block(p, 4095);
+    net_log->debug("new connection [%s][%d]", addr, this->peer().get_handle());
+    this->recv_buff_ = new ndk::message_block(4096);
     if (this->get_reactor() 
         && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                  this, 

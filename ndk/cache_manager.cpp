@@ -166,7 +166,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
     {
       if (this->flush_i() == -1)
       {
-        NDK_LOG("error: flush error!");
+        NDK_LOG("warning: flush failed!");
         return -1;
       }
     }while (this->water_mark_ > this->low_water_mark_);
@@ -204,7 +204,10 @@ inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_pending_obj(const KEY 
   {
     cache_map_itor pos = this->pending_list_.find(key);
     if (pos != this->pending_list_.end())
+    {
+      pos->second->acquire();
       return pos->second;
+    }
   }
   return 0;
 }
@@ -213,6 +216,13 @@ int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs()
 {
   if (!this->pending_list_.empty())
   {
+#if 0
+    NDK_LOG("warning: pending queue size = %d, map queue size = %d, "
+            "water mark = %ld",
+            this->pending_list_.size(),
+            this->cache_map_.size(),
+            this->water_mark_);
+#endif
     cache_map_itor itor = this->pending_list_.begin();
     for (; itor != this->pending_list_.end();)
     {

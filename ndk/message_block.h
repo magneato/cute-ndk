@@ -164,7 +164,7 @@ namespace ndk
     inline void set_eof(const int pos = -1)
     {
       if (pos == -1)
-        this->mb_data_[this->wr_ptr] = '\0';
+        this->mb_data_[this->wr_ptr_] = '\0';
       else
         this->mb_data_[pos] = '\0';
     }
