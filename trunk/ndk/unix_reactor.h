@@ -108,6 +108,39 @@ namespace ndk
 
   /**
    * @class unix_reactor_notify
+   */
+  class unix_reactor_notify_tuple
+  {
+    friend class unix_reactor_notify;
+  public:
+    unix_reactor_notify_tuple(event_handler *eh,
+                              void *msg)
+      : msg_(msg),
+      event_handler_(eh),
+      next_(0)
+    { }
+
+    inline void set(event_handler *eh, void *msg)
+    { this->msg_ = msg; this->event_handler_ = eh; }
+
+    inline unix_reactor_notify_tuple *next()
+    { return this->next_; }
+
+    inline void next(unix_reactor_notify_tuple *n)
+    { this->next_ = n; }
+  protected:
+    // Arg.
+    void *msg_;
+
+    // Msg handler.
+    event_handler *event_handler_;
+
+    // Link node.
+    unix_reactor_notify_tuple *next_;
+  };
+
+  /**
+   * @class unix_reactor_notify
    *
    * @brief Event handler used for unblocking the unix_reactor from its event 
    * loop.
@@ -130,22 +163,16 @@ namespace ndk
     /**
      * Called by a thread when it wants to unblock the <reactor_impl>.
      * This wakeups the <reactor_impl> if currently blocked.  Pass over
-     * both the <event_handler> *and* the <mask> to allow the caller to
-     * dictate which <event_handler> method the <reactor_impl> will invoke.
+     * both the <event_handler> *and* the <msg> to allow the caller to
+     * dictate which <event_handler::handle_msg> method the <reactor_impl> 
+     * will invoke.
      */
-    virtual int notify(event_handler *eh = 0,
-                       reactor_mask mask = event_handler::except_mask);
+    virtual int notify(event_handler *eh, void *msg);
 
     // Returns the ndk_handle of the notify pipe on which the reactor
     // is listening for notifications so that other threads can unblock
     // the <reactor_impl>.
     virtual ndk_handle notify_handle(void);
-
-    // Read one of the notify call on the <handle> into the
-    // <buffer>. This could be because of a thread trying to unblock
-    // the <reactor_impl>
-    virtual int read_notify_pipe(ndk_handle handle,
-                                 notification_buffer &buffer);
 
     // Purge any notifications pending in this reactor for the specified
     // event_handler object. Returns the number of notifications purged. 
@@ -156,8 +183,29 @@ namespace ndk
     // Handle readable event
     virtual int handle_input(ndk_handle handle);
   protected:
+    unix_reactor_notify_tuple *alloc_notify_tuple(event_handler *eh,
+                                                  void *msg);
+
+    //
+    void release_notify_tuple(unix_reactor_notify_tuple *tuple);
+
+    //
+    void push_notify_tuple(unix_reactor_notify_tuple *tuple);
+
+    //
+    unix_reactor_notify_tuple *pop_notify_tuple();
+
+    //
+    int read_notify_msg(unix_reactor_notify_tuple *free_tuple,
+                        unix_reactor_notify_tuple *&tuple);
+
+  protected:
     // Keep a back pointer to the unix_reactor. 
     unix_reactor *reactor_impl_;
+
+    unix_reactor_notify_tuple *notify_msg_queue_;
+    unix_reactor_notify_tuple *notify_msg_queue_tail_;
+    unix_reactor_notify_tuple *free_notify_msg_queue_;
 
     /**
      * Contains the ndk_handle the unix_reactor is listening on, as well as
@@ -165,7 +213,11 @@ namespace ndk
      * will write to.
      */
     pipe notification_pipe_;
+
+    typedef null_mutex notify_mtx;
+    notify_mtx notify_mutex_;
   }; 
+
   /**
    * @class unix_reactor
    * 
@@ -184,16 +236,15 @@ namespace ndk
     virtual ~unix_reactor() {}
   public:
     // 
-    virtual int notify(event_handler *eh = 0,
-                       reactor_mask mask = event_handler::except_mask)
+    inline virtual int notify(event_handler *eh, void *msg)
     {
-      return this->notify_handler_->notify(eh, mask);
+      return this->notify_handler_->notify(eh, msg);
     }
 
     // Purge any notifications pending in this reactor for the specified
     // event_handler object. Returns the number of notifications purged. 
     // Returns -1 on error.
-    virtual int purge_pending_notifications(event_handler * eh = 0,
+    inline virtual int purge_pending_notifications(event_handler * eh = 0,
                                             reactor_mask mask = event_handler::all_events_mask)
     {
       return this->notify_handler_->purge_pending_notifications(eh, mask);

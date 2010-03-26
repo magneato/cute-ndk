@@ -41,6 +41,9 @@ int unix_reactor_handler_repository::unbind_all()
 //---------------------------------------------------------------------------
 unix_reactor_notify::unix_reactor_notify()
 : reactor_impl_(0),
+  notify_msg_queue_(0),
+  notify_msg_queue_tail_(0),
+  free_notify_msg_queue_(0),
   notification_pipe_()
 {
 }
@@ -64,20 +67,43 @@ int unix_reactor_notify::close()
   STRACE("");
   return this->notification_pipe_.close();
 }
-int unix_reactor_notify::notify(event_handler *eh/* = 0*/,
-                                 reactor_mask mask/* = event_handler::except_mask*/)
+int unix_reactor_notify::notify(event_handler *eh, void *msg)
+                                
 {
   STRACE("");
-  if (this->reactor_impl_ == 0) return -1;
+  guard<notify_mtx> g(this->notify_mutex_);
+
+  unix_reactor_notify_tuple *tuple = this->alloc_notify_tuple(eh, msg);
 
   // 
-  notification_buffer buff(eh, mask);
-  return ndk::write(this->notification_pipe_.write_handle(), 
-                    (void *)&buff, 
-                    sizeof(buff)) > 0 ? 0 : -1;
+  int result = ndk::write(this->notification_pipe_.write_handle(), 
+                          "1", 
+                          1);
+  if (result != -1)
+    this->push_notify_tuple(tuple);
+  else
+    this->release_notify_tuple(tuple);
+  return result;
+}
+int unix_reactor_notify::handle_input(ndk_handle )
+{
+  STRACE("");
+  unix_reactor_notify_tuple *tuple = 0;
+  unix_reactor_notify_tuple *free_tuple = 0;
+  while (this->read_notify_msg(free_tuple, tuple) != -1)
+  {
+    free_tuple = tuple;
+    if (tuple == 0) continue;
+    if (tuple->event_handler_->handle_msg(tuple->msg_) < 0)
+    {
+      tuple->event_handler_->handle_close(NDK_INVALID_HANDLE, 
+                                          event_handler::null_mask);
+    }
+  }
+  return 0;
 }
 int unix_reactor_notify::purge_pending_notifications(event_handler * /*eh = 0*/,
-                                                      reactor_mask/* = event_handler::all_events_mask*/)
+                                                     reactor_mask/* = event_handler::all_events_mask*/)
 {
   STRACE("");
   return -1;

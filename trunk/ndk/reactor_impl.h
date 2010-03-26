@@ -21,28 +21,6 @@ namespace ndk
    */
   class reactor_impl;
   class token;
-  class notification_buffer
-  {
-  public:
-    notification_buffer()
-      : eh_(0),
-      mask_(0)
-    { }
-    notification_buffer(event_handler *eh, reactor_mask mask)
-      : eh_(eh),
-      mask_(mask)
-    { }
-
-    ~notification_buffer()
-    { }
-
-    // Pointer to the Event_Handler that will be dispatched
-    // by the main event loop.
-    event_handler *eh_;
-
-    // Mask that indicates which method to call.
-    reactor_mask mask_;
-  };
   /** 
    * @class reactor_notify
    *
@@ -59,22 +37,16 @@ namespace ndk
     /**
      * Called by a thread when it wants to unblock the <reactor_impl>.
      * This wakeups the <reactor_impl> if currently blocked.  Pass over
-     * both the <event_handler> *and* the <mask> to allow the caller to
-     * dictate which <event_handler> method the <reactor_impl> will invoke.
+     * both the <event_handler> *and* the <msg> to allow the caller to
+     * dictate which <event_handler::handle_msg> method the <reactor_impl>
+     * will invoke.
      */
-    virtual int notify(event_handler *eh = 0,
-                       reactor_mask mask = event_handler::except_mask) = 0;
+    virtual int notify(event_handler *eh, void *msg) = 0;
 
     // Returns the ndk_handle of the notify pipe on which the reactor
     // is listening for notifications so that other threads can unblock
     // the <reactor_impl>.
     virtual ndk_handle notify_handle(void) = 0;
-
-    // Read one of the notify call on the <handle> into the
-    // <buffer>. This could be because of a thread trying to unblock
-    // the <reactor_impl>
-    virtual int read_notify_pipe(ndk_handle handle,
-                                 notification_buffer &buffer) = 0;
 
     // Purge any notifications pending in this reactor for the specified
     // event_handler object. Returns the number of notifications purged. 
@@ -222,8 +194,8 @@ namespace ndk
      * Handler will be dispatched irrespective of whether it is
      * registered, not registered, or suspended in the Reactor.
      */
-    virtual int notify(event_handler *eh = 0,
-                       reactor_mask mask = event_handler::except_mask) = 0;
+    virtual int notify(event_handler *eh, void *msg);
+
      /**
       * Purge any notifications pending in this reactor for the specified
       * event_handler object. If eh == 0, all notifications for

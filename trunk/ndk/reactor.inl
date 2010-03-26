@@ -127,10 +127,9 @@ int reactor::cancel_timer(event_handler *eh,
                                            dont_call_handle_close);
 }
 inline
-int reactor::notify(event_handler *eh/* = 0*/,
-                    reactor_mask mask/* = event_handler::except_mask*/)
+int reactor::notify(event_handler *eh, void *msg)
 {
-  return this->reactor_impl_->notify(eh, mask);
+  return this->reactor_impl_->notify(eh, msg);
 }
 inline
 int reactor::purge_pending_notifications(event_handler *eh/* = 0*/,

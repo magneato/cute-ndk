@@ -22,7 +22,7 @@
 # define MAX_REACTOR_PROCESS_FDS_ONE_TIME    32
 
 // For listen
-# define NDK_DEFAULT_BACKLOG                 4096
+# define NDK_DEFAULT_BACKLOG                 128
 
 #endif // NDK_CONFIG_BASE_H_
 
