@@ -27,11 +27,9 @@
 #include <ndk/atomic_opt.h>
 #include <ndk/epoll_reactor.h>
 #include <ndk/select_reactor.h>
-#include <ndk/mem_pool.h>
 
 static ndk::logger *net_log = ndk::log_manager::instance()->get_logger("root.vodperf");
 
-ndk::mem_pool g_mem_pool;
 //
 enum
 {
@@ -136,16 +134,13 @@ public:
   {
     if (this->recv_buff_)
     {
-      g_mem_pool.free(this->recv_buff_->data());
       this->recv_buff_->release();
     }
     this->recv_buff_ = 0;
   }
   virtual int open(void *arg)
   {
-    char *p = (char *)g_mem_pool.malloc(4096);
-    std::memset(p, 0, 4096);
-    this->recv_buff_ = new ndk::message_block(p, 4095);
+    this->recv_buff_ = new ndk::message_block(4096);
     this->connect_ok_ = 1;
     this->begin_time_ = ::time(0);
     if (this->get_reactor() 
@@ -261,20 +256,6 @@ public:
 
   ~scs_interface()
   {
-    //g_mem_pool.dump();
-    this->release_data_blocks();
-  }
-  void release_data_blocks()
-  {
-    std::deque<ndk::message_block *>::iterator pos;
-    for (pos = this->data_blocks_.begin(); 
-         pos != this->data_blocks_.end(); 
-         ++pos)
-    {
-      g_mem_pool.free((*pos)->data());
-      (*pos)->release();
-    }
-    this->data_blocks_.clear();
   }
 
   virtual int handle_data(ndk::message_block *mb)
@@ -298,21 +279,6 @@ public:
       g_period_flux     += this->recv_buff_->length();
       this->recv_bytes_ += this->recv_buff_->length();
       this->recv_buff_->reset();
-#if 0
-      //
-      static int random_num[] = {4096, 500, 1024, 1000, 4000, 8000, 100, 4096, 2048, 8192};
-      static int random_num_size = sizeof(random_num)/sizeof(random_num[0]);
-      static int random_num_idx = 0;
-      this->data_blocks_.push_back(this->recv_buff_);
-      this->recv_buff_ = 0;
-      if (this->data_blocks_.size() > 60)
-        this->release_data_blocks();
-
-      char *p = (char *)g_mem_pool.malloc(random_num[random_num_idx]);
-      this->recv_buff_ = new ndk::message_block(p, random_num[random_num_idx] - 1);
-      if ((++random_num_idx) >= random_num_size)
-        random_num_idx = 0;
-#endif
       //
       if (this->recv_bytes_ >= this->content_length_)
         return -1;
@@ -686,15 +652,13 @@ public:
   {
     if (this->recv_buff_)
     {
-      g_mem_pool.free(this->recv_buff_->data());
       this->recv_buff_->release();
     }
     this->recv_buff_ = 0;
   }
   virtual int open(void *arg)
   {
-    char *p = (char *)g_mem_pool.malloc(4096);
-    this->recv_buff_ = new ndk::message_block(p, 4096);
+    this->recv_buff_ = new ndk::message_block(4096);
     if (this->get_reactor() 
         && this->get_reactor()->register_handler
         (this, 
@@ -1027,10 +991,6 @@ void print_usage()
   printf("  -P  poll type         's'(select) or 'e'(epoll)\n");
   printf("  -p  number            Listen port(default is 8800)'\n");
 }
-void dump_memory(int )
-{
-  g_mem_pool.dump();
-} 
 int main(int argc, char *argv[])
 {
   if (argc == 1)
@@ -1038,7 +998,6 @@ int main(int argc, char *argv[])
     print_usage();
     return 0;
   }
-  signal(SIGHUP, dump_memory);
   int c = -1;
   const char *opt = "c:k:I:i:t:p:P:";
   extern int optind, optopt;
@@ -1090,7 +1049,6 @@ int main(int argc, char *argv[])
     fprintf(stderr, "init logger failed\n");
     return 0;
   }
-  g_mem_pool.init(10*1024*1024, 20, 100);
   ndk::reactor_impl *r_impl = 0;
   if (poll_type == "s")
   {
@@ -1119,7 +1077,7 @@ int main(int argc, char *argv[])
   ndk::inet_addr local_addr(listen_port);
   if (g_acceptor->open(local_addr, ndk::reactor::instance()) != 0)
   {
-    fprintf(stderr, "open acceptor failed");
+    fprintf(stderr, "open acceptor failed\n");
     return -1;
   }
 
@@ -1128,7 +1086,10 @@ int main(int argc, char *argv[])
 
   g_assign_task = new assign_task_timer();
   if (g_assign_task->load_urls(urls_filename.c_str()) != 0)
+  {
+    fprintf(stderr, "load urls failed\n");
     return 0;
+  }
   int timer_id = ndk::reactor::instance()->schedule_timer(g_assign_task,
                                                           0,
                                                           ndk::time_value(5, 0),
