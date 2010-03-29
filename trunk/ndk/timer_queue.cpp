@@ -351,6 +351,7 @@ int timer_queue::schedule_i(const event_handler *eh,
   node->type(GENERAL_TIMER);
   this->insert(node);
 
+  this->verify_heap();
   return timer_id;
 }
 namespace ndk_help
@@ -1232,19 +1233,12 @@ int timer_queue::upcall(event_handler *eh,
 }
 void timer_queue::verify_heap()
 {
-  printf("curr size = %d\n", this->curr_size_);
-  for (int i = 0; i < this->curr_size_; ++i)
+  for (int i = 0, parent = 0; 
+       i < this->curr_size_; 
+       ++i, parent = (i - 1) / 2)
   {
-    timer_node *n = this->remove(0);
-    time_t s = n->timer_value().sec();
-    time_value v = n->timer_value();
-    v.sec(0);
-    printf("i = %d idx = %d timerid = %d tv = %ld.%d\n",
-           i,
-           this->timer_ids_[n->timer_id()],
-           n->timer_id(),
-           s,
-           (int)v.msec());
+    assert((this->timer_heap_[i])->timer_value() 
+           >= (this->timer_heap_[parent])->timer_value());
   }
 }
 } // namespace ndk

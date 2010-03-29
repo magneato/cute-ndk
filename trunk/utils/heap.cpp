@@ -60,6 +60,7 @@ public:
     --this->size_;
     this->heap_[pos] = this->heap_[this->size_];
     int parent = (pos - 1) / 2;
+    if (pos == 0) parent = 0;
     if (this->heap_[this->size_] >= this->heap_[parent])
       this->shift_down(pos);
     else
