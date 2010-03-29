@@ -112,8 +112,10 @@ int epoll_reactor_base::dispatch_io_events()
       {
         int r = this->remove_handler_i(pfd->data.fd, 
                                        event_handler::all_events_mask);
-        NDK_LOG("dispatch_io [handle = %d] trigger up/error [0x%x]"
+        time_t now = ::time(0);
+        NDK_LOG("dispatch_io [%s] [handle = %d] trigger up/error [0x%x]"
                 " events![r = %d] startpe = %p endpe = %p curr = %p",
+                ::ctime(&now),
                 pfd->data.fd,
                 pfd->events,
                 r,
