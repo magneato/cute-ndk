@@ -194,7 +194,7 @@ public:
     this->recv_msg_ok_ = 1;
 
     if (g_payload > concurrent_number)
-      return this->response_client(-1);
+      return this->response_client(-2);
 
     ++g_payload;
     ++g_requests;
@@ -261,6 +261,8 @@ public:
     std::ostringstream os;
     if (result == -1)
       os << "HTTP/1.1 404 Not Found\r\n";
+    else if (result == -2)
+      os << "HTTP/1.1 503 Service Unavailable\r\n";
     else
       os << "HTTP/1.1 200 OK\r\n";
     os << "Server: fcache\r\n"
