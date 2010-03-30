@@ -42,6 +42,30 @@ namespace ndk
         heap_ = new max_heap<cache_heap_item_t>(max_size);
     }
 
+    // release 
+    ~cache_heap()
+    {
+      STRACE("");
+      cache_heap_item_t *item = 0;
+      do
+      {
+        item = this->heap_->pop();
+        this->release_item(item);
+      }while (item != 0);
+
+      while (this->free_heap_items_)
+      {
+        cache_heap_item_t *item = this->free_heap_items_;
+        this->free_heap_items_ = item->next();
+        delete item;
+      }
+      this->free_heap_items_ = 0;
+
+      if (this->heap_)
+        delete this->heap_;
+      this->heap_ = 0;
+    }
+
     //
     inline bool is_empty(void) const
     { return this->heap_->is_empty(); }
@@ -79,7 +103,7 @@ namespace ndk
       cache_heap_item_t *real_item = 
         reinterpret_cast<cache_heap_item_t *>(item);
 
-      real_item->cobj_->heap_item(0);
+      real_item->cobj_->proxy(0);
       if (this->heap_->erase(real_item) == 0)
       {
         this->release_item(real_item); //
@@ -101,36 +125,11 @@ namespace ndk
       return this->heap_->push(real_item);
     }
 
-    void check_heap(void)
+    void check(void)
     {
       STRACE("");
-      this->heap_->check_heap();
+      this->heap_->check();
     }
-
-    // release 
-    ~cache_heap()
-    {
-      STRACE("");
-      cache_heap_item_t *item = 0;
-      do
-      {
-        item = this->heap_->pop();
-        this->release_item(item);
-      }while (item != 0);
-
-      while (this->free_heap_items_)
-      {
-        cache_heap_item_t *item = this->free_heap_items_;
-        this->free_heap_items_ = item->next();
-        delete item;
-      }
-      this->free_heap_items_ = 0;
-
-      if (this->heap_)
-        delete this->heap_;
-      this->heap_ = 0;
-    }
-
   protected:
     inline cache_heap_item_t *alloc_item(const KEY &key, cache_object *cobj)
     {
@@ -172,13 +171,13 @@ namespace ndk
       obj_id_(key),
       cobj_(obj),
       next_(0)
-    {  this->cobj_->heap_item(this); }
+    {  this->cobj_->proxy(this); }
 
     inline void reset(const KEY &key, cache_object *obj)
     {
       this->obj_id_ = key;
       this->cobj_   = obj;
-      this->cobj_->heap_item(this);
+      this->cobj_->proxy(this);
       this->next_ = 0;
       this->heap_idx_ = -1;
     }

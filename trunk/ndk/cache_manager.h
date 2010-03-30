@@ -13,6 +13,7 @@
 #include <map>
 
 #include "ndk/cache_heap.h"
+#include "ndk/cache_deque.h"
 #include "ndk/cache_object.h"
 #include "ndk/global_macros.h"
 
@@ -114,7 +115,7 @@ namespace ndk
     // store hot cache objects.
     cache_map_t cache_map_;  // For fast querying
 
-    cache_heap<KEY> *cache_heap_;  // For fast getting cobj need to drop.
+    cache_deque<KEY> *cache_priority_queue_;
 
     // store pending objects that refcount > 0
     cache_map_t pending_list_;
