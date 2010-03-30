@@ -41,7 +41,7 @@ namespace ndk
       : refcount_(0),
       size_(s),
       data_(p),
-      heap_item_(0),
+      proxy_(0),
       observer_(ob)
     { }
 
@@ -49,7 +49,7 @@ namespace ndk
     {
       this->data_ = 0; 
       this->size_ = 0;
-      this->heap_item_ = 0;
+      this->proxy_ = 0;
     }
     //
     inline void *data(void) const
@@ -61,11 +61,11 @@ namespace ndk
     inline cache_object_observer *observer()
     { return this->observer_; }
 
-    inline void heap_item(void *val)
-    { this->heap_item_ = val; }
+    inline void proxy(void *val)
+    { this->proxy_ = val; }
 
-    inline void *heap_item(void)
-    { return this->heap_item_; }
+    inline void *proxy(void)
+    { return this->proxy_; }
 
     virtual int priority(void) const = 0;
 
@@ -95,7 +95,7 @@ namespace ndk
     size_t size_;
 
     void *data_;
-    void *heap_item_;
+    void *proxy_;
     cache_object_observer *observer_;
   };
   /**

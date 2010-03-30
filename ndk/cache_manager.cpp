@@ -28,15 +28,16 @@ cache_manager<KEY, SYNCH_MUTEX>::cache_manager(int max_size,
   STRACE("");
   if (cobj_factory_ == 0)
     cobj_factory_ = new lru_cache_object_factory();
-  cache_heap_ = new cache_heap<KEY>(0, max_size);
+  //cache_priority_queue_ = new cache_heap<KEY>(0, max_size);
+  cache_priority_queue_ = new cache_deque<KEY>();
 }
 template<typename KEY, typename SYNCH_MUTEX>
 cache_manager<KEY, SYNCH_MUTEX>::~cache_manager()
 {
   STRACE("");
-  if (this->cache_heap_)
-    delete this->cache_heap_;
-  this->cache_heap_ = 0;
+  if (this->cache_priority_queue_)
+    delete this->cache_priority_queue_;
+  this->cache_priority_queue_ = 0;
 }
 template<typename KEY, typename SYNCH_MUTEX>
 inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get(const KEY &key)
@@ -80,7 +81,7 @@ inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_i(const KEY &key)
     return this->get_pending_obj(key);
 
   // this method will call cache_object::acquire to update priority.
-  this->cache_heap_->adjust(itor->second->heap_item());
+  this->cache_priority_queue_->adjust(itor->second->proxy());
 
   return itor->second;
 }
@@ -115,7 +116,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::put_i(const KEY &key,
   cobj->acquire(); // update acquire record before insert to heap.
 
   // # push to heap.
-  if (this->cache_heap_->insert(key, cobj) != 0)
+  if (this->cache_priority_queue_->insert(key, cobj) != 0)
   {
     NDK_LOG("insert to heap failed![%s:%d]", __FILE__, __LINE__);
     this->cache_map_.erase(key);
@@ -166,7 +167,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
     {
       if (this->flush_i() == -1)
       {
-        NDK_LOG("warning: flush failed!");
+        //NDK_LOG("warning: flush failed!");
         return -1;
       }
     }while (this->water_mark_ > this->low_water_mark_);
@@ -187,7 +188,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(void)
   // 2.
   KEY temp_key;
   cache_object *temp_obj = 0;
-  if (this->cache_heap_->remove(temp_key, temp_obj) == 0)
+  if (this->cache_priority_queue_->remove(temp_key, temp_obj) == 0)
   {
     this->cache_map_.erase(temp_key);
     size_t s = temp_obj->size();
@@ -200,6 +201,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(void)
 template<typename KEY, typename SYNCH_MUTEX>
 inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_pending_obj(const KEY &key)
 {
+  STRACE("");
   if (!this->pending_list_.empty())
   {
     cache_map_itor pos = this->pending_list_.find(key);
@@ -214,6 +216,7 @@ inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_pending_obj(const KEY 
 template<typename KEY, typename SYNCH_MUTEX>
 int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs()
 {
+  STRACE("");
   if (!this->pending_list_.empty())
   {
 #if 0
@@ -243,6 +246,7 @@ int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs()
 template<typename KEY, typename SYNCH_MUTEX>
 int cache_manager<KEY, SYNCH_MUTEX>::flush_pending_objs(const KEY &key)
 {
+  STRACE("");
   if (!this->pending_list_.empty())
   {
     cache_map_itor pos = this->pending_list_->find(key);
@@ -271,7 +275,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(const KEY &key)
   cache_object *temp_obj = itor->second;
   this->cache_map_.erase(itor);
 
-  this->cache_heap_->remove(temp_obj->heap_item());
+  this->cache_priority_queue_->remove(temp_obj->proxy());
   size_t s = temp_obj->size();
   int result = this->drop_i(key, temp_obj);
   if (result == 0)
@@ -281,7 +285,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush_i(const KEY &key)
 template<typename KEY, typename SYNCH_MUTEX>
 void cache_manager<KEY, SYNCH_MUTEX>::check(void)
 {
-  this->cache_heap_->check_heap();
+  this->cache_priority_queue_->check();
 }
 } // namespace ndk
 #endif // NDK_CACHE_MANAGER_CPP_

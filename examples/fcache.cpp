@@ -191,10 +191,11 @@ public:
     if (uri.empty() || uri[0] == '?')
       return this->show_status();
 
-    this->recv_msg_ok_ = 1;
-
     if (g_payload > concurrent_number)
       return this->response_client(-2);
+
+    this->recv_msg_ok_ = 1;
+
 
     ++g_payload;
     ++g_requests;

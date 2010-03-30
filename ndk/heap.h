@@ -87,7 +87,6 @@ namespace ndk
     // you must call this method if you reset the priority of the <item>.
     inline virtual int adjust(ITEM *item)
     {
-      assert(0);
       if (item == 0) return -1;
 
       assert(this->heap_[item->heap_idx_] == item);
@@ -100,7 +99,7 @@ namespace ndk
     }
 
     // for debug
-    virtual void check_heap() = 0;
+    virtual void check() = 0;
   protected:
     //
     virtual void shift_up(int pos, ITEM *moved_item) = 0;
@@ -152,7 +151,7 @@ namespace ndk
     }
 
     // for debug
-    virtual void check_heap()
+    virtual void check()
     {
       for (int i = 0, parent = 0; 
            i < this->size_; 
@@ -262,7 +261,7 @@ namespace ndk
     }
 
     // for debug
-    void check_heap()
+    void check()
     {
       for (int i = 0, parent = 0; 
            i < this->size_; 
