@@ -200,7 +200,7 @@ public:
     ++g_payload;
     ++g_requests;
 
-    uri = work_path + uri;
+    uri = work_path + "/" + uri;
     int result = 0;
     this->cache_obj_ = g_cache_manager->get(uri);
     if (this->cache_obj_ == 0)
@@ -212,14 +212,18 @@ public:
         ++g_miss;
         void *data = ::mmap(0, st.st_size, PROT_READ, 
                             MAP_SHARED, this->file_handle_, 0);
-        if (data && g_cache_manager->put(uri, data, st.st_size, 
-                                         g_cache_object_observer,
-                                         this->cache_obj_) != 0)
+        if (data == 0 || g_cache_manager->put(uri, data, st.st_size, 
+                                              g_cache_object_observer,
+                                              this->cache_obj_) != 0)
         {
           result = st.st_size;
           this->recv_buff_->reset();
-          net_log->error("put cache to manager failed!");
-          ::munmap(data, st.st_size);
+          if (data)
+          {
+            net_log->error("put cache to manager failed!");
+            ::munmap(data, st.st_size);
+          }else
+            net_log->error("mmap failed![%s]", strerror(errno));
         }else
         {
           net_log->rinfo("hit [%s] failed! [refcount = %d][cobj = %p]", 
@@ -492,8 +496,8 @@ int main(int argc, char *argv[])
   g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(65535,
                                                                          1024,
                                                                          20*1024*1024,
-                                                                         500,
-                                                                         450);
+                                                                         high_water,
+                                                                         low_water);
   ndk::reactor::instance()->run_reactor_event_loop();
   net_log->error("reactor exit! [%s]", strerror(errno));
   return 0;
