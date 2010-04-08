@@ -138,14 +138,23 @@ namespace ndk
       cache_deque_item_t *itor = this->deque_head_;
       for (; itor != 0 && itor->next() != 0; itor = itor->next())
       {
-#if 0
+#if 1
+        if (itor->priority() > itor->next()->priority())
+          goto DUMP;
+#else
+        assert(itor->priority() <= itor->next()->priority());
+#endif
+      }
+      return ;
+DUMP:
+      itor = this->deque_head_;
+      for (; itor != 0 && itor->next() != 0; itor = itor->next())
+      {
         fprintf(stderr, "cur priority = %d:%p next priority = %d:%p\n",
                 itor->priority(),
                 itor,
                 itor->next()->priority(),
                 itor->next());
-#endif
-        assert(itor->priority() <= itor->next()->priority());
       }
     }
   protected:
