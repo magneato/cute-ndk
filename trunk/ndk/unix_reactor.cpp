@@ -1,10 +1,5 @@
 #include "ndk/unix_reactor.h"
 
-#ifdef NDK_RTLOG
-# include <cstring>
-# include <cstdio>
-#endif
-
 namespace ndk
 {
 int unix_reactor_handler_repository::open(int size)
@@ -94,11 +89,13 @@ int unix_reactor_notify::handle_input(ndk_handle )
   {
     free_tuple = tuple;
     if (tuple == 0) continue;
-    if (tuple->event_handler_->handle_msg(tuple->msg_) < 0)
+    if (tuple->event_handler_ && 
+        tuple->event_handler_->handle_msg(tuple->msg_) < 0)
     {
       tuple->event_handler_->handle_close(NDK_INVALID_HANDLE, 
                                           event_handler::null_mask);
     }
+    tuple = 0;
   }
   return 0;
 }

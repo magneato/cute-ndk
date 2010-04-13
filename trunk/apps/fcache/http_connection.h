@@ -23,6 +23,10 @@ public:
   http_connection();
 
   virtual ~http_connection();
+
+  inline virtual void set_remote_addr(const ndk::inet_addr &addr)
+  { this->remote_addr_ = addr; }
+
   //
   virtual int handle_input(ndk::ndk_handle );
 

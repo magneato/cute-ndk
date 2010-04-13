@@ -10,11 +10,19 @@
 #ifndef NDK_UNIX_REACTOR_H_
 #define NDK_UNIX_REACTOR_H_
 
+#include "ndk/config.h"
+
 #include "ndk/pipe.h"
 #include "ndk/strace.h"
 #include "ndk/timer_queue.h"
 #include "ndk/reactor_impl.h"
+#include "ndk/global_macros.h"
 #include "ndk/reactor_token.h"
+
+#ifdef NDK_RTLOG
+# include <cstring>
+# include <cstdio>
+#endif
 
 namespace ndk
 {

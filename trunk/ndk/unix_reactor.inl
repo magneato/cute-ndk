@@ -66,6 +66,7 @@ inline
 unix_reactor_notify_tuple *unix_reactor_notify::alloc_notify_tuple(event_handler *eh,
                                                                    void *msg)
 {
+  STRACE("");
   unix_reactor_notify_tuple *tuple = 0;
   if (this->free_notify_msg_queue_ == 0)
     this->free_notify_msg_queue_ = new unix_reactor_notify_tuple(eh, msg);
@@ -77,6 +78,7 @@ unix_reactor_notify_tuple *unix_reactor_notify::alloc_notify_tuple(event_handler
 inline
 void unix_reactor_notify::release_notify_tuple(unix_reactor_notify_tuple *tuple)
 {
+  STRACE("");
   if (tuple == 0) return ;
   tuple->next(this->free_notify_msg_queue_);
   this->free_notify_msg_queue_ = tuple;
@@ -84,6 +86,7 @@ void unix_reactor_notify::release_notify_tuple(unix_reactor_notify_tuple *tuple)
 inline
 void unix_reactor_notify::push_notify_tuple(unix_reactor_notify_tuple *tuple)
 {
+  STRACE("");
   if (this->notify_msg_queue_tail_ == 0)
     this->notify_msg_queue_ = tuple;
   else
@@ -93,6 +96,7 @@ void unix_reactor_notify::push_notify_tuple(unix_reactor_notify_tuple *tuple)
 inline
 unix_reactor_notify_tuple *unix_reactor_notify::pop_notify_tuple()
 {
+  STRACE("");
   unix_reactor_notify_tuple *tuple = 0;
   if (this->notify_msg_queue_)
   {
@@ -107,6 +111,7 @@ inline
 int unix_reactor_notify::read_notify_msg(unix_reactor_notify_tuple *free_tuple,
                                          unix_reactor_notify_tuple *&tuple)
 {
+  STRACE("");
   guard<notify_mtx> g(this->notify_mutex_);
   this->release_notify_tuple(free_tuple);
   char a;
