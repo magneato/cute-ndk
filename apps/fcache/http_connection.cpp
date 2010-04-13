@@ -14,21 +14,11 @@ http_connection::~http_connection()
 }
 int http_connection::open(void *arg)
 {
-  ndk::inet_addr remote_addr;
-  if (this->peer().get_remote_addr(remote_addr) != 0)
-  {
-    log->error("get [fd = %d] remote address failed!",
-               this->get_handle());
-    return -1;
-  }
   char addr[32] = {0};
-  remote_addr.get_host_addr(addr, sizeof(addr));
-  log->rinfo("new connection from [%s:%d]", 
-             addr, remote_addr.port_number());
+  this->remote_addr_.addr_to_string(addr, sizeof(addr));
+  log->rinfo("new connection from [%s", addr);
 
   this->recv_buff_ = new ndk::message_block(4096);
-  if (this->get_reactor() == 0)
-    this->set_reactor(ndk::reactor::instance());
   return this->get_reactor()->register_handler(this, 
                                                ndk::event_handler::read_mask);
 }
@@ -51,6 +41,7 @@ int http_connection::handle_input(ndk::ndk_handle )
 		this->bytes_to_recv_ -= this->recv_buff_->length();
 		return 0;
 	}
+#if 0
 	char *content_len_pos = ::strstr(this->recv_buff_->rd_ptr(), "Content-Length:");
 	if (content_len_pos == 0)
 	{
@@ -58,8 +49,7 @@ int http_connection::handle_input(ndk::ndk_handle )
                         this->recv_buff_->data());
 		return -1;
 	}
-	int content_len = 0;
-	::sscanf(content_len_pos, "Content-Length:%d\r\n", &content_len);
+	int content_len = ::atoi(content_len_pos + sizeof("Content-Length:")); 
 	int http_header_len = http_sepa - this->recv_buff_->data() + 4;
 
 	int total_len = http_header_len + content_len;
@@ -80,6 +70,7 @@ int http_connection::handle_input(ndk::ndk_handle )
 		this->bytes_to_recv_ = total_len - this->recv_buff_->length();
 		return 0;
 	}
+#endif
 	this->recv_buff_->set_eof();
 	return this->handle_data (this->recv_buff_);
 }
@@ -96,93 +87,57 @@ int http_connection::handle_data(ndk::message_block *mb)
     log->error("get an invalid request [%s]", data);
     return -1;
   }
-  char *p = ::strchr(data + 5, "HTTP/1.");
+  char *uri_begin = data + 4;
+  char *p = ::strstr(uri_begin, "HTTP/1.");
   if (p == 0)
   {
     log->error("get an invalid request [%s]", data);
     return -1;
   }
-  http_request *req = new http_request;
-  req->uri.assign(data + 4, (p - 1) - (data + 4));
-
-  // @step 2. parse modified time.
-  char *modified_since_p = ::strstr(p, if_modified_since);
-  char *unmodified_since_p = ::strstr(p, if_unmodified_since);
-  char *unless_modified_since_p = ::strstr(p, if_unless_modified_since);
-  char *mpos = 0;
-  if (modified_since_p)
+  char *headers = ::strstr(p, "\r\n");
+  if (header == 0)
   {
-    mpos = modified_since_p + sizeof(if_modified_since);
-  }else if (unmodified_since)
-  {
-    mpos = unmodified_since_p + sizeof(if_unmodified_since);
-  }else if (unless_modified_since_p)
-  {
-    mpos = unless_modified_since_p + sizeof(if_unless_modified_since);
+    log->error("get an invalid request [%s]", data);
+    return -1;
   }
-  if (mpos)
-  {
-    std::string in_modified_time;
-    char *eof = strstr(mpos, "\r\n");
-    if (eof)
-      in_modified_time.assign(mpos, eof - mpos);
-    else
-    {
-      log->error("get an invalid request [%s]", data);
-      return -1;
-    }
-    std::string::size_type p1 = req->uri.find_last_of('?');
-    std::string filename;
-    if (p1 == std::string::npos)
-      filename = req->uri;
-    else
-      filename = req->uri.substr(0, p1);
-    filename = svc_config::instance()->fs_root() + filename;
-    fileinfo finfo = file_manager::instance()->find_file(filename);
-    if (!finfo)
-    {
-      ndk_stat st;
-      memset((void*)&st, 0, sizeof(st));
-      if (ndk_os::stat(filename.c_str(), &st) == 0)
-      {
-        finfo = new fileinfo(filename);
-        finfo->mtime = st.st_mtime;
-        finfo->modified_time = help::get_gmt(finfo->mtime);
-        finfo->file_size     = st.st_size;
-        file_manager::instance()->insert_file(finfo);
-      }else
-      {
-        this->peer()->send("404");
-        return -1;
-      }
-    } // if (!finfo)
-    if (in_modified_time == finfo->modified_time)
-    {
-      this->peer()->send("304");
-      return -1;
-    }
-  } // if (mpos)
-  
-  // @step 3. parse range.
-  char *range_pos = ::strstr(p, "Range");
+  headers += 2;
+
+  this->http_request_ = new http_request;
+  this->http_request_->uri.assign(uri_begin, (p - 1) - uri_begin);
+
+  // @step 2. parse range.
+  char *range_pos = ::strstr(headers, "Range");
   if (range_pos)
   {
-    ::sscanf(range_pos, "Range: bytes=%lld-%lld\r\n",
-             &(req->begin_pos),
-             &(req->end_pos));
-  }else
+    range_pos += sizeof("Range: bytes=") - 1;
+  }else if ((range_pos = ::strstr(headers, "Content-Range")))
   {
-    range_pos = ::strstr(p, "Content-Range");
-    if (range_pos)
+    range_pos += sizeof("Content-Range: bytes=") - 1;
+  }
+  //
+  if (range_pos)
+  {
+    if (*range_pos == '-')
     {
-      sscanf(range_pos, "Content-Range: bytes=%lld-%lld\r\n",
-             &(req->begin_pos),
-             &(req->end_pos));
+      if (*(range_pos + 1) != '\r')
+        this->http_request_->end_pos = ::atoll(range_pos + 1);
+    }else
+    {
+      if (*range_pos != '\r')
+        this->http_request_->begin_pos = ::atoll(range_pos);
+      char *sp = ::strchr(range_pos, '-');
+      if (sp && *(sp + 1) != '\r')
+          this->http_request_->end_pos = ::atoll(sp + 1);
     }
   }
 
   // @step 4. insert into I/O dispatch queue.
-  return 0;
+  ndk::inet_addr local_addr;
+  if (this->peer().get_local_addr(local_addr) != 0)
+  {
+    log->error("get local addr failed!", strerror(errno));
+    return -1;
+  }
+  return s_net_interface_scheduler->dispatch_request(local_addr, 
+                                                     this->http_request_);
 }
-
-

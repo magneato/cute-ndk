@@ -52,6 +52,7 @@ int current_payload = 0;
 int current_bandwidth = 0;
 int start_interface = I_SCS;
 int listen_port = 8800;
+int multi_thread = 0;
 
 //
 int g_biz_req_total = 0;
@@ -77,7 +78,9 @@ long long int g_period_flux = 0;
 int svc_status = svc_running;
 
 class assign_task_timer;
+class  assign_task_task;
 assign_task_timer *g_assign_task = 0;
+assign_task_task *g_assign_task_task = 0;
 
 namespace help
 {
@@ -117,6 +120,53 @@ static void clear_statistic_data()
 class interface;
 ndk::connector<interface> *g_connector = 0;
 
+class assign_task_task : public ndk::task
+{
+public:
+  class job_item
+  {
+  public:
+    job_item(interface *s, ndk::inet_addr &addr)
+    : si(s),
+    remote_addr(addr)
+    { }
+
+    interface *si;
+    ndk::inet_addr remote_addr;
+  };
+  assign_task_task()
+  { }
+
+  int open(int thr_num = 5)
+  {
+    return this->activate(ndk::thread::thr_join, thr_num);
+  }
+  virtual int svc()
+  {
+    ndk::message_block *mb = 0;
+    ndk::time_value timeout(2, 0);
+    while (1)
+    {
+      mb = 0;
+      this->getq(mb, &timeout);
+      if (mb)
+      {
+        this->handle_job(mb);
+        mb->release();
+      }
+    }
+    return 0;
+  }
+  void handle_job(ndk::message_block *mb)
+  {
+    job_item *job = reinterpret_cast<job_item *>(mb->data());
+    net_log->debug("get one job %p", job);
+    ndk::time_value tout(3, 0);
+    if (job)
+      g_connector->connect(job->si, job->remote_addr, &tout);
+    delete job;
+  }
+};
 class interface : public ndk::svc_handler
 {
 public:
@@ -425,10 +475,18 @@ public:
         if (host.find(':') == std::string::npos)
           host.append(":80");
         ndk::inet_addr remote_addr(host.c_str());
-        scs_interface *sbs = new scs_interface(location,
+        scs_interface *scs = new scs_interface(location,
                                                host);
-        ndk::time_value tout(3, 0);
-        g_connector->connect(sbs, remote_addr, &tout);
+        if (multi_thread)
+        {
+          g_assign_task_task->putq(new ndk::message_block((char *)new assign_task_task::job_item(scs,
+                                                                                                 remote_addr), 
+                                                          sizeof(void*)));
+        }else
+        {
+          ndk::time_value tout(3, 0);
+          g_connector->connect(scs, remote_addr, &tout);
+        }
         return -1;
       }
     }
@@ -502,8 +560,16 @@ public:
         ndk::inet_addr remote_addr(host.c_str());
         sbs_interface *sbs = new sbs_interface(location,
                                                host);
-        ndk::time_value tout(3, 0);
-        g_connector->connect(sbs, remote_addr, &tout);
+        if (multi_thread)
+        {
+          g_assign_task_task->putq(new ndk::message_block((char *)new assign_task_task::job_item(sbs,
+                                                                                                 remote_addr), 
+                                                          sizeof(void*)));
+        }else
+        {
+          ndk::time_value tout(3, 0);
+          g_connector->connect(sbs, remote_addr, &tout);
+        }
         return -1;
       }
     }
@@ -625,10 +691,20 @@ public:
         break;
       }
       iter = this->unassinged_url_list_.erase(iter);
-      ndk::inet_addr remote_addr(host.c_str()); 
-      ndk::time_value tout(3, 0);
+      ndk::inet_addr remote_addr(host.c_str());
       if (si)
-        g_connector->connect(si, remote_addr, &tout);
+      {
+        if (multi_thread)
+        {
+          g_assign_task_task->putq(new ndk::message_block((char *)new assign_task_task::job_item(si,
+                                                                                                 remote_addr), 
+                                                          sizeof(void*)));
+        }else
+        {
+          ndk::time_value tout(3, 0);
+          g_connector->connect(si, remote_addr, &tout);
+        }
+      }
     }
     return 0;
   }
@@ -989,7 +1065,8 @@ void print_usage()
   printf("  -i  filename          Name of file where urls saved\n");
   printf("  -t  type              'biz' or 'sbs' or 'scs'\n");
   printf("  -P  poll type         's'(select) or 'e'(epoll)\n");
-  printf("  -p  number            Listen port(default is 8800)'\n");
+  printf("  -p  number            Listen port(default is 8800)\n");
+  printf("  -m                    Use multi thread\n");
 }
 int main(int argc, char *argv[])
 {
@@ -999,7 +1076,7 @@ int main(int argc, char *argv[])
     return 0;
   }
   int c = -1;
-  const char *opt = "c:k:I:i:t:p:P:";
+  const char *opt = "c:k:I:i:t:p:P:m";
   extern int optind, optopt;
   std::string urls_filename;
   std::string poll_type = "e";
@@ -1035,6 +1112,9 @@ int main(int argc, char *argv[])
     case 'P':
       poll_type = optarg;
       break;
+    case 'm':
+      multi_thread = 1;
+      break;
     case ':':
       fprintf(stderr, "Option -%c requires an operand\n", optopt);
       return -1;
@@ -1052,24 +1132,50 @@ int main(int argc, char *argv[])
   ndk::reactor_impl *r_impl = 0;
   if (poll_type == "s")
   {
-    ndk::select_reactor<ndk::reactor_null_token> *r =
-      new ndk::select_reactor<ndk::reactor_null_token>();
-    if (r->open() != 0)
+    if (multi_thread)
     {
-      fprintf(stderr, "open select reactor failed\n");
-      return -1;
+      ndk::select_reactor<ndk::reactor_token> *r =
+        new ndk::select_reactor<ndk::reactor_token>();
+      if (r->open() != 0)
+      {
+        fprintf(stderr, "open select reactor failed\n");
+        return -1;
+      }
+      r_impl = r;
+    }else
+    {
+      ndk::select_reactor<ndk::reactor_null_token> *r =
+        new ndk::select_reactor<ndk::reactor_null_token>();
+      if (r->open() != 0)
+      {
+        fprintf(stderr, "open select reactor failed\n");
+        return -1;
+      }
+      r_impl = r;
     }
-    r_impl = r;
   }else
   {
-    ndk::epoll_reactor<ndk::reactor_null_token> *r = 
-      new ndk::epoll_reactor<ndk::reactor_null_token>();
-    if (r->open() != 0)
+    if (multi_thread)
     {
-      fprintf(stderr, "open epoll reactor failed\n");
-      return -1;
+      ndk::epoll_reactor<ndk::reactor_token> *r = 
+        new ndk::epoll_reactor<ndk::reactor_token>();
+      if (r->open() != 0)
+      {
+        fprintf(stderr, "open epoll reactor failed\n");
+        return -1;
+      }
+      r_impl = r;
+    }else
+    {
+      ndk::epoll_reactor<ndk::reactor_null_token> *r = 
+        new ndk::epoll_reactor<ndk::reactor_null_token>();
+      if (r->open() != 0)
+      {
+        fprintf(stderr, "open epoll reactor failed\n");
+        return -1;
+      }
+      r_impl = r;
     }
-    r_impl = r;
   }
   ndk::reactor::instance(new ndk::reactor(r_impl));
 
@@ -1083,6 +1189,16 @@ int main(int argc, char *argv[])
 
   g_connector = new ndk::connector<interface>();
   g_connector->open(ndk::reactor::instance());
+
+  if (multi_thread)
+  {
+    g_assign_task_task = new assign_task_task();
+    if (g_assign_task_task->open() != 0)
+    {
+      fprintf(stderr, "assign task task open failed!\n");
+      return 0;
+    }
+  }
 
   g_assign_task = new assign_task_timer();
   if (g_assign_task->load_urls(urls_filename.c_str()) != 0)
