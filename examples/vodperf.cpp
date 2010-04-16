@@ -242,7 +242,6 @@ public:
       return -1;
     }else if (result == 0)
     {
-      assert((this->recv_buff_->size() - this->recv_buff_->length()) > 0);
       net_log->debug("connection closed by peer [%s]! [escape %d secs]"
                      , this->remote_addr_.c_str()
                      , (int)difftime(::time(0), this->begin_time_));
@@ -938,7 +937,7 @@ public:
 
       static char scs_flux_total[]    = "total(mB)";
       static int  scs_flux_total_w    = v8;
-      static char scs_bandwidth[]     = "bwidth(kB)";
+      static char scs_bandwidth[]     = "bwidth(kb)";
       static int  scs_bandwidth_w     = v9;
 
       std::ostringstream  ostr;
