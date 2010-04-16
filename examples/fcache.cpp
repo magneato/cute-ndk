@@ -196,11 +196,13 @@ public:
 
   int open()
   {
+    STRACE("");
     return this->activate(ndk::thread::thr_join, 1);
   }
 
   virtual int svc()
   {
+    STRACE("");
     while (1)
     {
       if (this->task_idle_)
@@ -215,6 +217,7 @@ public:
   }
   int out_of_bandwidth(dispatch_job *job, ndk::time_value &now)
   {
+    STRACE("");
     ndk::time_value diff_time = now - job->last_check_bandwidth_time;
     if ((diff_time.msec() > 1000))
     {
@@ -226,6 +229,7 @@ public:
   }
   void push_job(dispatch_job *job)
   {
+    STRACE("");
     assert(job);
     ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
     this->dispatch_queue_.push_back(job);
@@ -234,6 +238,7 @@ public:
   }
   void delete_client(int sid)
   {
+    STRACE("");
     ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
     dispatch_queue_itor itor = this->dispatch_queue_.begin();
     for (; itor != this->dispatch_queue_.end(); ++itor)
@@ -250,6 +255,7 @@ protected:
   void dispatch_data(void);
   void delete_job_i(dispatch_job *job)
   {
+    STRACE("");
     ndk::reactor::instance()->notify(reactor_event_handler::instance(),
                                      new notify_event(job->session_id));
   }
@@ -288,6 +294,8 @@ public:
     {
       dispatch_data_task::instance()->delete_client(this->session_id_);
       http_sessionmgr::instance()->remove(this->session_id_);
+      net_log->debug("remove sessionid %d", this->session_id_);
+      this->session_id_ = -1;
     }
     if (this->recv_buff_)
       this->recv_buff_->release();
@@ -440,7 +448,7 @@ public:
           this->recv_buff_->reset();
           if (data)
           {
-            net_log->error("put cache to manager failed!");
+            net_log->rinfo("put cache to manager failed!");
             ::munmap(data, st.st_size);
           }else
             net_log->error("mmap failed![%s]", strerror(errno));
@@ -585,6 +593,7 @@ public:
   }
   int send_data(void)
   {
+    STRACE("");
     int result = 0;
     if (this->file_handle_ != NDK_INVALID_HANDLE)
     {
@@ -619,19 +628,28 @@ public:
   }
   int transfic_from_file()
   {
-    int result = ::read(this->file_handle_, 
-                        this->recv_buff_->wr_ptr(), 
-                        this->recv_buff_->space());
-    if (result <= 0)
-      return -1;
-    this->recv_buff_->wr_ptr(result);
+    STRACE("");
+    int result = 0;
+    if (this->recv_buff_->length() == 0)
+    {
+      if (this->recv_buff_->space() == 0)
+        this->recv_buff_->reset();
+      result = ::read(this->file_handle_, 
+                      this->recv_buff_->wr_ptr(), 
+                      this->recv_buff_->space());
+      if (result <= 0)
+      {
+        errno = 0;
+        return -1;
+      }
+      this->recv_buff_->wr_ptr(result);
+    }
     result = this->peer().send(this->recv_buff_->rd_ptr(),
                                this->recv_buff_->length());
     if (result <= 0)
       return -1;
-    this->send_bytes_ += result;
-    this->recv_buff_->reset();
-    return 0;
+    this->recv_buff_->rd_ptr(result);
+    return result;
   }
 protected:
   int session_id_;
@@ -648,6 +666,7 @@ protected:
 };
 void dispatch_data_task::dispatch_data()
 {
+  STRACE("");
   this->poll_before_.update();
   {
     ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
