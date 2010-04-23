@@ -72,6 +72,27 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::flush(void)
   return this->flush_i();
 }
 template<typename KEY, typename SYNCH_MUTEX>
+int cache_manager<KEY, SYNCH_MUTEX>::flush_all(void)
+{
+  STRACE("");
+  guard<SYNCH_MUTEX> g(this->cache_mutex_);
+
+  // 1. drop all of pending objs.
+  this->flush_pending_objs();
+
+  // 2.
+  KEY temp_key;
+  cache_object *temp_obj = 0;
+  while (this->cache_priority_queue_->remove(temp_key, temp_obj) == 0)
+  {
+    this->cache_map_.erase(temp_key);
+    size_t s = temp_obj->size();
+    if (this->drop_i(temp_key, temp_obj) == 0)
+      this->water_mark_ -= s;
+  }
+  return 0;
+}
+template<typename KEY, typename SYNCH_MUTEX>
 inline cache_object *cache_manager<KEY, SYNCH_MUTEX>::get_i(const KEY &key)
 {
   STRACE("");
@@ -155,7 +176,7 @@ inline int cache_manager<KEY, SYNCH_MUTEX>::make_cobj(void *data,
   if (size > this->cobj_max_size_
       || size < this->cobj_min_size_) // 
   {
-    NDK_LOG("error: [%u] is too small/large to cache", size);
+    //NDK_LOG("error: [%u] is too small/large to cache", size);
     return -1;
   }
 
@@ -286,6 +307,19 @@ template<typename KEY, typename SYNCH_MUTEX>
 void cache_manager<KEY, SYNCH_MUTEX>::check(void)
 {
   this->cache_priority_queue_->check();
+}
+template<typename KEY, typename SYNCH_MUTEX>
+void cache_manager<KEY, SYNCH_MUTEX>::dump(void)
+{
+  NDK_LOG("dumping: before flushing: cache queue size = %d\n"
+          "         pedding list size = %d",
+          this->cache_map_.size(),
+          this->pending_list_.size());
+  this->flush_pending_objs();
+  NDK_LOG("dumping: after flushing: cache queue size = %d\n"
+          "         pedding list size = %d\n",
+          this->cache_map_.size(),
+          this->pending_list_.size());
 }
 } // namespace ndk
 #endif // NDK_CACHE_MANAGER_CPP_

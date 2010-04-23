@@ -58,8 +58,12 @@ namespace ndk
     // Removes lowest priority object from cache.
     int flush(void);
 
+    // Removes all objects from cache.
+    int flush_all(void);
+
     // Debug.
     void check();
+    void dump();
   protected:
     //
     cache_object *get_i(const KEY &key);

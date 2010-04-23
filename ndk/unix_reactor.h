@@ -24,6 +24,8 @@
 # include <cstdio>
 #endif
 
+#include <cassert>
+
 namespace ndk
 {
   /**
@@ -222,7 +224,7 @@ namespace ndk
      */
     pipe notification_pipe_;
 
-    typedef null_mutex notify_mtx;
+    typedef thread_mutex notify_mtx;
     notify_mtx notify_mutex_;
   }; 
 

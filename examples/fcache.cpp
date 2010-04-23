@@ -29,7 +29,7 @@
 #include <ndk/mem_pool.h>
 #include <ndk/cache_manager.h>
 
-#define TIME_PIECE  20  //msec
+#define TIME_PIECE  50  //msec
 
 static ndk::logger *net_log = ndk::log_manager::instance()->get_logger("root.fcache_test");
 
@@ -112,6 +112,7 @@ public:
   int insert(http_client *c)
   {
     http_session *hs = new http_session(this->session_ids_++);
+    hs->client(c);
     this->session_list_.insert(std::make_pair(hs->session_id(),
                                               hs));
     return hs->session_id();
@@ -136,35 +137,6 @@ private:
   typedef std::map<int, http_session *> session_list_t;
   typedef std::map<int, http_session *>::iterator session_list_itor;
   session_list_t session_list_;
-};
-/**
- * @brief notify event class
- */
-class notify_event
-{
-public:
-  notify_event(int sid)
-    : session_id(sid)
-  { }
-
-public:
-  int session_id;
-};
-class reactor_event_handler : public ndk::event_handler, public ndk::singleton<reactor_event_handler>
-{
-public:
-  reactor_event_handler()
-  { }
-
-  virtual int handle_msg(void *msg)
-  {
-    notify_event *event = reinterpret_cast<notify_event *>(msg);
-    http_session *hs = http_sessionmgr::instance()->find(event->session_id);
-    if (hs)
-      delete hs;
-    delete event;
-    return 0;
-  }
 };
 /**
  * @brief diskpatch data task
@@ -253,12 +225,8 @@ public:
   }
 protected:
   void dispatch_data(void);
-  void delete_job_i(dispatch_job *job)
-  {
-    STRACE("");
-    ndk::reactor::instance()->notify(reactor_event_handler::instance(),
-                                     new notify_event(job->session_id));
-  }
+
+  void delete_job_i(dispatch_job *job);
 private:
   int task_idle_;
   ndk::time_value poll_before_;
@@ -280,7 +248,8 @@ public:
     : session_id_(-1),
     recv_msg_ok_(0),
     send_bytes_(0),
-    bytes_to_send_(8192),
+    bytes_to_send_(4096),
+    content_length_(0),
     timer_id_(-1),
     file_handle_(NDK_INVALID_HANDLE),
     cache_obj_(0),
@@ -313,7 +282,7 @@ public:
                      this->cache_obj_,
                      this->cache_obj_->refcount());
     }
-    if (this->send_bytes_ >= this->content_length_)
+    if (this->content_length_ > 0 && this->send_bytes_ == this->content_length_)
     {
       ++g_finished;
       ndk::time_value diff = ndk::time_value::gettimeofday() - this->begin_time_;
@@ -321,6 +290,8 @@ public:
                      this->content_length_,
                      diff.msec());
     }
+    if (this->recv_msg_ok_)
+      --g_payload;
     this->cache_obj_ = 0;
   }
   inline virtual void set_remote_addr(const ndk::inet_addr &remote_addr)
@@ -332,7 +303,7 @@ public:
     char addr[32] = {0};  // 
     this->remote_addr_.addr_to_string(addr, sizeof(addr));
     net_log->debug("new connection [%s][%d]", addr, this->peer().get_handle());
-    this->recv_buff_ = new ndk::message_block(4096);
+    this->recv_buff_ = new ndk::message_block(1024*1024);
     if (this->get_reactor() 
         && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                  this, 
@@ -348,6 +319,8 @@ public:
     this->timer_id_ = this->get_reactor()->schedule_timer(this,
                                                           0,
                                                           tv);
+    ndk::socket::set_sndbuf(this->peer().get_handle(),
+                            32*1024);
     assert(this->timer_id_ != -1);
     return this->timer_id_ == -1 ? -1 : 0;
   }
@@ -368,6 +341,12 @@ public:
     }else if (result == 0)
     {
       net_log->debug("socket %d closed by peer!", 
+                     this->peer().get_handle());
+      return -1;
+    }
+    if (this->recv_msg_ok_)
+    {
+      net_log->error("handle %d had recv a msg!",
                      this->peer().get_handle());
       return -1;
     }
@@ -393,9 +372,8 @@ public:
     STRACE("");
     assert(m == ndk::event_handler::read_mask 
            || m == ndk::event_handler::timer_mask
-           || m == ndk::event_handler::write_mask);
-    if (this->recv_msg_ok_)
-      --g_payload;
+           || m == ndk::event_handler::write_mask
+           || m == ndk::event_handler::all_events_mask);
     this->destroy();
     return 0;
   }
@@ -414,7 +392,11 @@ public:
     char *uri_begin_p = ptr + 4 + 1;
     char *uri_end_p = ::strstr(uri_begin_p, " HTTP/1.");
     if (uri_end_p == 0)
+    {
+      net_log->error("error http request [%s]",
+                     ptr);
       return this->response_client(-1);
+    }
     std::string uri(uri_begin_p, uri_end_p - uri_begin_p);
     if (uri.empty() || uri[0] == '?')
       return this->show_status();
@@ -450,6 +432,7 @@ public:
           {
             net_log->rinfo("put cache to manager failed!");
             ::munmap(data, st.st_size);
+            assert(this->cache_obj_ == 0);  // for debug
           }else
             net_log->error("mmap failed![%s]", strerror(errno));
         }else
@@ -458,6 +441,7 @@ public:
                          uri.c_str(),
                          this->cache_obj_->refcount(),
                          this->cache_obj_);
+          assert(this->cache_obj_ != 0);  // for debug
           ++g_put_obj;
           result = st.st_size;
           if (this->file_handle_ != -1) 
@@ -465,7 +449,10 @@ public:
           this->file_handle_ = NDK_INVALID_HANDLE;
         }
       }else 
+      {
+        net_log->error("open failed! [%s]", strerror(errno));
         result = -1;
+      }
     }else
     {
       net_log->rinfo("hit [%s] ok!", uri.c_str());
@@ -474,7 +461,7 @@ public:
     }
     if (result != -1)
     {
-#if 0
+#ifndef MULTI_THREAD 
       if (this->get_reactor() 
           && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                    this, 
@@ -486,6 +473,7 @@ public:
         return -1;
       }
 #else
+      this->response_client(result);
       this->session_id_ = http_sessionmgr::instance()->insert(this);
       assert(this->session_id_ != -1);
       dispatch_data_task::dispatch_job *job = 
@@ -496,6 +484,9 @@ public:
       net_log->debug("push a job [sid = %d]", this->session_id_);
 #endif
       ++g_request_ok;
+#ifdef MULTI_THREAD
+      return 0;
+#endif
     }
     return this->response_client(result);
   }
@@ -512,10 +503,12 @@ public:
     os << "Server: fcache\r\n"
       << "Accept-Ranges: bytes\r\n"
       << "Connection: keep-alive\r\n";
-    if (result != -1)
+    if (result > 0)
     {
       os << "Content-Length: " << result << "\r\n";
       this->content_length_ = result;
+      if (this->bytes_to_send_ > this->content_length_)
+        this->bytes_to_send_ = this->content_length_;
     }
     os << "\r\n";
     this->peer().send(os.str().c_str(), os.str().length());
@@ -523,7 +516,7 @@ public:
   }
   int show_status()
   {
-    g_cache_manager->check();
+    g_cache_manager->check();  // for debug
     STRACE("");
     static int v1 = 10, v2 = 10, v3 = 10, v4 = 10; 
     static int v5 = 10, v6 = 10, v7 = 10, v8 = 10, v9 = 10;
@@ -589,7 +582,7 @@ public:
   virtual int handle_output(ndk::ndk_handle )
   {
     STRACE("");
-    return this->send_data() == -1 ? -1 : 0;
+    return this->send_data() < 0 ? -1 : 0;
   }
   int send_data(void)
   {
@@ -606,22 +599,33 @@ public:
     }
     if (result < 0)
     {
+      if (result == -2) return -2;
+#ifdef NDEBUG
       if (errno != EWOULDBLOCK)
       {
         net_log->error("send data to %d failed! [%s]",
                        this->get_handle(),
                        strerror(errno));
       }
+#endif
       return -1;
     }
     this->send_bytes_ += result;
-    if (this->send_bytes_ >= this->content_length_)
+    if (this->send_bytes_ == this->content_length_)
     {
-      return -1;
-    }else if (this->content_length_ - this->send_bytes_ 
-              < this->bytes_to_send_)
+      return -2;
+    }else if (this->file_handle_ == NDK_INVALID_HANDLE
+              && (this->content_length_ - this->send_bytes_ 
+                  < this->bytes_to_send_))
     {
+      if (this->content_length_ - this->send_bytes_ <= 0)
+      {
+        net_log->error("bytes to send is %d, bytes_to_send_ = %d",
+                       this->content_length_ - this->send_bytes_,
+                       this->bytes_to_send_);
+      }
       this->bytes_to_send_ = this->content_length_ - this->send_bytes_;
+      assert(this->bytes_to_send_ > 0);
     }
 
     return result;
@@ -639,8 +643,7 @@ public:
                       this->recv_buff_->space());
       if (result <= 0)
       {
-        errno = 0;
-        return -1;
+        return -2;
       }
       this->recv_buff_->wr_ptr(result);
     }
@@ -664,18 +667,76 @@ protected:
   ndk::message_block *recv_buff_;
   ndk::inet_addr remote_addr_;
 };
+/**
+ * @brief notify event class
+ */
+class notify_event
+{
+public:
+  notify_event(int sid)
+    : session_id(sid)
+  { }
+
+public:
+  int session_id;
+};
+class reactor_event_handler : public ndk::event_handler, public ndk::singleton<reactor_event_handler>
+{
+public:
+  reactor_event_handler()
+  { }
+
+  virtual int handle_msg(void *msg)
+  {
+    notify_event *event = reinterpret_cast<notify_event *>(msg);
+    http_session *hs = http_sessionmgr::instance()->find(event->session_id);
+    if (hs)
+    {
+      net_log->debug("reactor event handler find session: %d",
+                     event->session_id);
+      http_client *hc = hs->client();
+      if (hc) delete hc;
+      delete hs;
+    }else
+    {
+      net_log->debug("reactor event handler not find session: %d",
+                     event->session_id);
+    }
+    delete event;
+    return 0;
+  }
+};
+void dispatch_data_task::delete_job_i(dispatch_job *job)
+{
+  STRACE("");
+  if (ndk::reactor::instance()->notify(reactor_event_handler::instance(),
+                                       new notify_event(job->session_id)) != 0)
+  {
+    net_log->error("notify session %d failed [%s]",
+                   job->session_id,
+                   strerror(errno));
+  }
+}
 void dispatch_data_task::dispatch_data()
 {
   STRACE("");
   this->poll_before_.update();
   {
-    ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
+    //ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
+    this->dispatch_queue_mtx_.acquire();
+
     dispatch_queue_itor itor = this->dispatch_queue_.begin();
     int result = 0;
+    int stopped_count = 0;
     for (; itor != this->dispatch_queue_.end(); )
     {
       dispatch_job *job = *itor;
-      if (job->stopped || this->out_of_bandwidth(job, this->poll_before_))
+      if (job->stopped)
+      {
+        ++stopped_count;
+        net_log->debug("session %d stopped!", job->session_id);
+        goto LOOP_END;
+      }else if (this->out_of_bandwidth(job, this->poll_before_))
         goto LOOP_END;
 
       job->bytes_to_send_per_timep += (bandwidth_limit*1024/(1000/TIME_PIECE))/8;
@@ -683,15 +744,16 @@ void dispatch_data_task::dispatch_data()
       for (; job->bytes_to_send_per_timep > 0; )
       {
         result = job->client->send_data();
-        if (result == -1)
+        if (result < 0)
         {
-          if (errno != EWOULDBLOCK)
+          if (result == -1 && errno == EWOULDBLOCK)
+            break;
+          else
           {
             job->stopped = 1;
             this->delete_job_i(job);
             goto LOOP_END;
-          }else
-            break;
+          }
         }else
         {
           job->bytes_to_send_per_timep -= result;
@@ -702,18 +764,22 @@ LOOP_END:
       ++itor;
 LOOP_DONE:
     ;
-    }
-    if (this->dispatch_queue_.empty())
+    } // end `for (; itor != this->dispatch_queue_.end(); ...'
+    if (this->dispatch_queue_.empty()
+        || 
+        stopped_count == this->dispatch_queue_.size())
       this->task_idle_ = 1;
     else
       this->task_idle_ = 0;
+
+    this->dispatch_queue_mtx_.release();
   }
   this->poll_after_.update();
   this->diff_time_ = this->poll_after_ - poll_before_;
   int msec = TIME_PIECE - this->diff_time_.msec();
   if (msec > 5)
   {
-    ndk::sleep(ndk::time_value(0, msec*1000));
+    ndk::sleep(ndk::time_value(0, (msec-3)*1000));
   }
 }
 
@@ -728,10 +794,14 @@ void print_usage()
   printf("  -b  kbps              Max of ouput bandwidth'\n");
   printf("  -h  MB                Cache manager high water mark'\n");
   printf("  -l  MB                Cache manager low water mark'\n");
+  printf("\n");
+  printf("You can use 'watch curl -s http://localhost:port/' to monitor me.\n\n");
 }
 void dump_info(int )
 {
   g_cache_manager->check();
+  g_cache_manager->dump();
+  g_cache_manager->flush_all();
 }
 int main(int argc, char *argv[])
 {
@@ -741,6 +811,7 @@ int main(int argc, char *argv[])
     return 0;
   }
   signal(SIGPIPE, SIG_IGN);
+  signal(SIGTRAP, SIG_IGN);
   signal(SIGHUP, dump_info);
   int c = -1;
   const char *opt = "c:p:d:b:h:l:";
@@ -781,7 +852,7 @@ int main(int argc, char *argv[])
     fprintf(stderr, "init logger failed\n");
     return 0;
   }
-#if 1
+#ifdef MULTI_THREAD
   ndk::epoll_reactor<ndk::reactor_token> *r_impl
     = new ndk::epoll_reactor<ndk::reactor_token>();
 #else
@@ -806,7 +877,9 @@ int main(int argc, char *argv[])
                                                                          20*1024*1024,
                                                                          high_water,
                                                                          low_water);
+#ifdef MULTI_THREAD
   dispatch_data_task::instance()->open();
+#endif
 
   ndk::reactor::instance()->run_reactor_event_loop();
   net_log->error("reactor exit! [%s]", strerror(errno));

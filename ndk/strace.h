@@ -10,8 +10,6 @@
 #ifndef NDK_STRACE_H_
 #define NDK_STRACE_H_
 
-#ifdef NDK_STRACE
-
 #include <cstdio>
 #include <cstring>
 
@@ -92,6 +90,5 @@ namespace ndk
 
 } // namespace ndk
 
-#endif // NDK_STRACE
 #endif // NDK_STRACE_H_
 
