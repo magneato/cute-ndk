@@ -935,7 +935,7 @@ public:
       static char scs_cur_payload[]   = "payload";
       static int  scs_cur_payload_w   = v7;
 
-      static char scs_flux_total[]    = "total(mB)";
+      static char scs_flux_total[]    = "total(mb)";
       static int  scs_flux_total_w    = v8;
       static char scs_bandwidth[]     = "bwidth(kb)";
       static int  scs_bandwidth_w     = v9;
@@ -1006,7 +1006,7 @@ public:
         //<< std::setw(sizeof("|")) << " "
 
         << std::setw(sizeof("flux:")) << " "
-        << std::setw(scs_flux_total_w) << g_scs_flux_total/1024/1024
+        << std::setw(scs_flux_total_w) << g_scs_flux_total*8/1024/1024
         << std::setw(scs_bandwidth_w) << g_scs_bandwidth;
 
       ostr << std::endl;
@@ -1066,6 +1066,8 @@ void print_usage()
   printf("  -P  poll type         's'(select) or 'e'(epoll)\n");
   printf("  -p  number            Listen port(default is 8800)\n");
   printf("  -m                    Use multi thread\n");
+  printf("\n");
+  printf("You can use 'watch curl -s http://localhost:port/status' to monitor me.\n\n");
 }
 int main(int argc, char *argv[])
 {

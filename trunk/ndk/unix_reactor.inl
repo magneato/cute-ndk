@@ -70,6 +70,11 @@ unix_reactor_notify_tuple *unix_reactor_notify::alloc_notify_tuple(event_handler
   unix_reactor_notify_tuple *tuple = 0;
   if (this->free_notify_msg_queue_ == 0)
     this->free_notify_msg_queue_ = new unix_reactor_notify_tuple(eh, msg);
+  else
+  {
+    this->free_notify_msg_queue_->event_handler_ = eh;
+    this->free_notify_msg_queue_->msg_ = msg;
+  }
   tuple = this->free_notify_msg_queue_;
   this->free_notify_msg_queue_ = this->free_notify_msg_queue_->next();
   tuple->next(0);
@@ -118,9 +123,10 @@ int unix_reactor_notify::read_notify_msg(unix_reactor_notify_tuple *free_tuple,
   int result = ndk::read(this->notification_pipe_.read_handle(),
                          &a,
                          1);
-  if (result != -1)
+  if (result == 1)
   {
     tuple = this->pop_notify_tuple();
+    assert(tuple != 0);
     return 0;
   }
   return -1;

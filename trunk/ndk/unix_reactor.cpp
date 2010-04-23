@@ -63,22 +63,22 @@ int unix_reactor_notify::close()
   return this->notification_pipe_.close();
 }
 int unix_reactor_notify::notify(event_handler *eh, void *msg)
-                                
 {
   STRACE("");
   guard<notify_mtx> g(this->notify_mutex_);
 
   unix_reactor_notify_tuple *tuple = this->alloc_notify_tuple(eh, msg);
+  assert(tuple != 0); 
 
   // 
   int result = ndk::write(this->notification_pipe_.write_handle(), 
                           "1", 
                           1);
-  if (result != -1)
+  if (result == 1)
     this->push_notify_tuple(tuple);
   else
     this->release_notify_tuple(tuple);
-  return result;
+  return result == 1 ? 0 : -1;
 }
 int unix_reactor_notify::handle_input(ndk_handle )
 {
