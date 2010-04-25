@@ -120,12 +120,12 @@ namespace ndk
   {
   public:
     lru_cache_object(void *p, size_t s, cache_object_observer *ob)
-      : cache_object(p, s, ob),
-      last_access_(0)
+      : cache_object(p, s, ob)/*,
+      last_access_(0)*/
     { }
 
     inline virtual int priority(void )const 
-    { return static_cast<int>(this->last_access_); }
+    { return 0; /*static_cast<int>(this->last_access_);*/ }
 
     inline virtual void acquire_i(void)
     { 
@@ -133,10 +133,10 @@ namespace ndk
        * lru replacement algorithm realized by the deque, so that more 
        * efficient. so <last_access_> just to debug priority queue.
        */
-      this->last_access_ = ::time(0) - time_value::start_time.sec(); 
+      //this->last_access_ = ::time(0) - time_value::start_time.sec(); 
     }
   protected:
-    time_t last_access_;
+    //time_t last_access_;
   };
   /**
    * @class lru_cache_object_factory

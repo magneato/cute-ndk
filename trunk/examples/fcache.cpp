@@ -516,7 +516,7 @@ public:
   }
   int show_status()
   {
-    g_cache_manager->check();  // for debug
+    //g_cache_manager->check();  // for debug
     STRACE("");
     static int v1 = 10, v2 = 10, v3 = 10, v4 = 10; 
     static int v5 = 10, v6 = 10, v7 = 10, v8 = 10, v9 = 10;
@@ -799,7 +799,7 @@ void print_usage()
 }
 void dump_info(int )
 {
-  g_cache_manager->check();
+  //g_cache_manager->check();
   g_cache_manager->dump();
   g_cache_manager->flush_all();
 }
