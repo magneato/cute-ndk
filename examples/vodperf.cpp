@@ -160,7 +160,6 @@ public:
   void handle_job(ndk::message_block *mb)
   {
     job_item *job = reinterpret_cast<job_item *>(mb->data());
-    net_log->debug("get one job %p", job);
     ndk::time_value tout(3, 0);
     if (job)
       g_connector->connect(job->si, job->remote_addr, &tout);

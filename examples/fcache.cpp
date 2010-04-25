@@ -873,7 +873,7 @@ int main(int argc, char *argv[])
     return -1;
   }
   g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(65535,
-                                                                         1024,
+                                                                         32,
                                                                          20*1024*1024,
                                                                          high_water,
                                                                          low_water);
