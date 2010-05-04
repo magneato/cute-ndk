@@ -105,6 +105,20 @@ int unix_reactor_notify::purge_pending_notifications(event_handler * /*eh = 0*/,
   STRACE("");
   return -1;
 }
+#ifdef NDK_DUMP
+void unix_reactor_notify::dump()
+{
+  int size = 0;
+  unix_reactor_notify_tuple *itor = this->free_notify_msg_queue_;
+  while (itor)
+  {
+    ++size;
+    itor = itor->next();
+  }
+  NDK_LOG("dump: unix reactor notify\n"
+          "      free notify tuples = %d\n", size);
+}
+#endif
 // ------------------------------------------------------------------------
 unix_reactor::unix_reactor()
 : size_(0),
@@ -276,5 +290,11 @@ int unix_reactor::remove_handler_i(ndk_handle handle,
 
   return 0;
 }
+#ifdef NDK_DUMP
+void unix_reactor::dump()
+{
+  this->notify_handler_->dump();
+}
+#endif
 } // namespace ndk
 

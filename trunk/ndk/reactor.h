@@ -223,6 +223,9 @@ namespace ndk
     // Get the implementation class
     reactor_impl* implementation();
 
+#ifdef NDK_DUMP
+    void dump();
+#endif
   protected:
     // Delegation/implementation class that all methods will be
     // forwarded to.

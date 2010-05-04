@@ -13,7 +13,7 @@
                                BIN_DIR = ./bin
                                 TARGET = $(BIN_DIR)/libnetdkit.so.1.0
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
-                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG#-DNDK_STRACE
+                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DNDK_DUMP#-DNDK_STRACE
                                     CC = gcc
                             CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make

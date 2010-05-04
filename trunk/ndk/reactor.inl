@@ -147,4 +147,11 @@ int reactor::close()
 {
   return this->reactor_impl_->close();
 }
+#ifdef NDK_DUMP
+inline
+void reactor::dump()
+{
+  this->reactor_impl_->dump();
+}
+#endif
 } // namespace ndk

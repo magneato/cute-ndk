@@ -19,6 +19,7 @@
 
 #include <ndk/thread_mutex.h>
 #include <ndk/reactor.h>
+#include <ndk/atomic_opt.h>
 #include <ndk/svc_handler.h>
 #include <ndk/message_block.h>
 #include <ndk/acceptor.h>
@@ -73,7 +74,10 @@ public:
     : session_id_(sid),
     output_bandwidth_(0),
     client_(0)
-  { }
+  { http_session::count++; }
+
+  ~http_session()
+  { http_session::count--; }
 
   inline void session_id(int sid)
   { this->session_id_ = sid; }
@@ -93,11 +97,14 @@ public:
   inline http_client *client(void)
   { return this->client_; }
 
+public:
+  static int count;
 private:
   int session_id_;
   int output_bandwidth_;
   http_client *client_;
 };
+int http_session::count = 0;
 /**
  * @brief http session mgr
  */
@@ -109,13 +116,13 @@ public:
   { }
 
   // return session id.
-  int insert(http_client *c)
+  int insert(http_session *hs)
   {
-    http_session *hs = new http_session(this->session_ids_++);
-    hs->client(c);
-    this->session_list_.insert(std::make_pair(hs->session_id(),
-                                              hs));
-    return hs->session_id();
+    std::pair<session_list_itor, bool> ret = 
+      this->session_list_.insert(std::make_pair(hs->session_id(),
+                                                hs));
+    assert(ret.second == true);
+    return ret.second ? 0 : -1;
   }
 
   http_session *find(int sid)
@@ -127,9 +134,24 @@ public:
     return itor->second;
   }
 
-  void remove(int sid)
+  http_session *remove(int sid)
   {
-    this->session_list_.erase(sid);
+    session_list_itor itor = this->session_list_.find(sid);
+    if (itor == this->session_list_.end())
+      return 0;
+    http_session *hs = itor->second;
+    this->session_list_.erase(itor);
+    return hs;
+  }
+
+  int alloc_sessionid()
+  {
+    return this->session_ids_++;
+  }
+
+  size_t size()
+  {
+    return this->session_list_.size();
   }
 private:
   int session_ids_;
@@ -152,8 +174,13 @@ public:
       session_id(-1),
       bytes_to_send_per_timep(0),
       client(0)
-    { }
+    { dispatch_job::count++; }
+
+    ~dispatch_job()
+    { dispatch_job::count--; }
+    
   public:
+    static int count;
     int stopped;
     int session_id;
     int bytes_to_send_per_timep;
@@ -238,6 +265,7 @@ private:
   ndk::thread_mutex dispatch_queue_mtx_;
   ndk::condition<ndk::thread_mutex> dispatch_queue_not_empty_cond_;
 };
+int dispatch_data_task::dispatch_job::count = 0;
 /**
  * @brief http client
  */
@@ -254,20 +282,26 @@ public:
     file_handle_(NDK_INVALID_HANDLE),
     cache_obj_(0),
     recv_buff_(0)
-  { }
+  { http_client::count++; }
 
   virtual ~http_client()
   {
     STRACE("");
+    http_client::count--;
     if (this->session_id_ != -1)
     {
       dispatch_data_task::instance()->delete_client(this->session_id_);
-      http_sessionmgr::instance()->remove(this->session_id_);
+      http_session *hs = 
+        http_sessionmgr::instance()->remove(this->session_id_);
+      if (hs) delete hs;
       net_log->debug("remove sessionid %d", this->session_id_);
       this->session_id_ = -1;
     }
     if (this->recv_buff_)
+    {
       this->recv_buff_->release();
+      http_client::msg_count--;
+    }
     this->recv_buff_ = 0;
 
     if (this->file_handle_ != NDK_INVALID_HANDLE)
@@ -304,6 +338,7 @@ public:
     this->remote_addr_.addr_to_string(addr, sizeof(addr));
     net_log->debug("new connection [%s][%d]", addr, this->peer().get_handle());
     this->recv_buff_ = new ndk::message_block(1024*1024);
+    http_client::msg_count++;
     if (this->get_reactor() 
         && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                  this, 
@@ -474,8 +509,10 @@ public:
       }
 #else
       this->response_client(result);
-      this->session_id_ = http_sessionmgr::instance()->insert(this);
-      assert(this->session_id_ != -1);
+      this->session_id_ = http_sessionmgr::instance()->alloc_sessionid();
+      http_session *hs = new http_session(this->session_id_);
+      hs->client(this);
+      http_sessionmgr::instance()->insert(hs);
       dispatch_data_task::dispatch_job *job = 
         new dispatch_data_task::dispatch_job;
       job->session_id = this->session_id_;
@@ -554,10 +591,10 @@ public:
       << std::endl;
     int hrate  = 0;
     if (g_finished > 0)
-      hrate = g_hit * 100 / g_request_ok;
+      hrate = int(int64_t(g_hit * 100) / int64_t(g_request_ok));
     int mrate = 0;
     if (g_finished > 0)
-      mrate = g_miss * 100 / g_request_ok;
+      mrate = int(int64_t(g_miss * 100) / int64_t(g_request_ok));
     ostr << std::setw(requests_w) << g_requests
       << std::setw(finished_w) << g_finished
       << std::setw(hit_w) << g_hit
@@ -654,6 +691,9 @@ public:
     this->recv_buff_->rd_ptr(result);
     return result;
   }
+public:
+  static int count;
+  static int msg_count;
 protected:
   int session_id_;
   int recv_msg_ok_;
@@ -667,6 +707,8 @@ protected:
   ndk::message_block *recv_buff_;
   ndk::inet_addr remote_addr_;
 };
+int http_client::count = 0;
+int http_client::msg_count = 0;
 /**
  * @brief notify event class
  */
@@ -675,11 +717,16 @@ class notify_event
 public:
   notify_event(int sid)
     : session_id(sid)
-  { }
+  { notify_event::count++; }
 
+  ~notify_event()
+  { notify_event::count--; }
 public:
   int session_id;
+  static ndk::atomic_opt<int, ndk::thread_mutex> count;
 };
+ndk::atomic_opt<int, ndk::thread_mutex> notify_event::count;
+
 class reactor_event_handler : public ndk::event_handler, public ndk::singleton<reactor_event_handler>
 {
 public:
@@ -695,8 +742,8 @@ public:
       net_log->debug("reactor event handler find session: %d",
                      event->session_id);
       http_client *hc = hs->client();
+      assert(hc != 0);
       if (hc) delete hc;
-      delete hs;
     }else
     {
       net_log->debug("reactor event handler not find session: %d",
@@ -802,6 +849,13 @@ void dump_info(int )
   //g_cache_manager->check();
   g_cache_manager->dump();
   g_cache_manager->flush_all();
+  ndk::reactor::instance()->dump();
+  NDK_LOG("notify event new/delete diff is %d", notify_event::count.value());
+  NDK_LOG("http session count is %d", http_session::count);
+  NDK_LOG("http session list size is %d", http_sessionmgr::instance()->size());
+  NDK_LOG("http client count is %d", http_client::count);
+  NDK_LOG("http client msg count is %d", http_client::msg_count);
+  NDK_LOG("dispatch job count is %d", dispatch_data_task::dispatch_job::count);
 }
 int main(int argc, char *argv[])
 {

@@ -53,6 +53,8 @@ int current_bandwidth = 0;
 int start_interface = I_SCS;
 int listen_port = 8800;
 int multi_thread = 0;
+std::string urls_filename;
+std::string poll_type = "e";
 
 //
 int g_biz_req_total = 0;
@@ -810,7 +812,6 @@ public:
     }else if (!cmd.empty() && cmd[0] == '?')
     {
       const char *p = cmd.c_str();
-      std::string urls_filename;
       int new_start_interface = start_interface;
       int reload_urls = 0;
       do
@@ -1030,24 +1031,38 @@ public:
     std::ostringstream  ostr;
     ostr << std::setfill(' ')
       << std::setiosflags(std::ios::right);
-    ostr << std::setw(12) << "command" << " / " << std::endl
-      << std::setw(12) << "start" << " : " << "start run service" << std::endl
-      << std::setw(12) << "stop" << " : " << "stop to launch new tasks" << std::endl
-      << std::setw(12) << "term" << " : " << "terminate all tasks(including luanched tasks)" << std::endl
-      << std::setw(12) << "reload" << " : " << "reload task file" << std::endl
-      << std::setw(12) << "clear" << " : " << "clear statistic data" << std::endl
-      << std::setw(12) << "exit" << " : " << "exit program" << std::endl
-      << std::setw(12) << "status" << " : " << "show statistic data" << std::endl
-      << std::setw(12) << "e.g." << " : " << "http://host/status" << std::endl
+
+    int width = 16;
+    ostr << std::endl;
+    ostr << std::setw(width) << "current setting" << " : " 
+                                               << "c=" << concurrent_number << " "
+                                               << "k=" << concurrent_number_keeping << " "
+                                               << "I=" << interval_period << " "
+                                               << "i=" << urls_filename << " "
+                                               << "t=" << start_interface << " "
+                                               << "p=" << listen_port << " "
+                                               << "P=" << poll_type << " "
+                                               << "m=" << multi_thread << " "
+                                               << std::endl
+                                               << std::endl
+      << std::setw(width) << "command" << " / " << std::endl
+      << std::setw(width) << "start" << " : " << "start run service" << std::endl
+      << std::setw(width) << "stop" << " : " << "stop to launch new tasks" << std::endl
+      << std::setw(width) << "term" << " : " << "terminate all tasks(including luanched tasks)" << std::endl
+      << std::setw(width) << "reload" << " : " << "reload task file" << std::endl
+      << std::setw(width) << "clear" << " : " << "clear statistic data" << std::endl
+      << std::setw(width) << "exit" << " : " << "exit program" << std::endl
+      << std::setw(width) << "status" << " : " << "show statistic data" << std::endl
+      << std::setw(width) << "e.g." << " : " << "http://host/status" << std::endl
       << std::endl
-      << std::setw(12) << "setting" << " /? " << std::endl
-      << std::setw(12) << "c" << " : " << "number of multiple requests to perform at a time" << std::endl
-      << std::setw(12) << "k" << " : " << "number of requests keeping" << std::endl
-      << std::setw(12) << "I" << " : " << "interval of every group request" << std::endl
-      << std::setw(12) << "i" << " : " << "name of file where urls saved" << std::endl
-      << std::setw(12) << "t" << " : " << "starting interface, 'biz' or 'sbs' or 'scs'" << std::endl
-      << std::setw(12) << "p" << " : " << "listen port" << std::endl
-      << std::setw(12) << "e.g." << " : " << "http://host/?c=10&k=200i=url" << std::endl;
+      << std::setw(width) << "setting" << " /? " << std::endl
+      << std::setw(width) << "c" << " : " << "number of multiple requests to perform at a time" << std::endl
+      << std::setw(width) << "k" << " : " << "number of requests keeping" << std::endl
+      << std::setw(width) << "I" << " : " << "interval of every group request" << std::endl
+      << std::setw(width) << "i" << " : " << "name of file where urls saved" << std::endl
+      << std::setw(width) << "t" << " : " << "starting interface, 'biz' or 'sbs' or 'scs'" << std::endl
+      << std::setw(width) << "p" << " : " << "listen port" << std::endl
+      << std::setw(width) << "e.g." << " : " << "http://host/?c=10&k=200i=url" << std::endl;
     return ostr.str();
   }
 protected:
@@ -1078,8 +1093,6 @@ int main(int argc, char *argv[])
   int c = -1;
   const char *opt = "c:k:I:i:t:p:P:m";
   extern int optind, optopt;
-  std::string urls_filename;
-  std::string poll_type = "e";
   while ((c = getopt(argc, argv, opt)) != -1)
   {
     switch(c)
