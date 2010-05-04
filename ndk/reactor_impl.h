@@ -53,6 +53,9 @@ namespace ndk
     // Returns -1 on error.
     virtual int purge_pending_notifications(event_handler * = 0,
                                             reactor_mask = event_handler::all_events_mask) = 0;
+#ifdef NDK_DUMP
+    virtual void dump() = 0;
+#endif
   };
   /**
    * @class reactor_impl
@@ -208,6 +211,9 @@ namespace ndk
 
     // Get token.
     virtual token &lock() = 0;
+#ifdef NDK_DUMP
+    virtual void dump() = 0;
+#endif
   };
 } // namespace ndk
 

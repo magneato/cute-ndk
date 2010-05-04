@@ -107,6 +107,7 @@ int message_queue::enqueue_head_i(message_block *new_item)
     this->tail_ = seq_tail;
   this->head_ = new_item;
 
+  this->mb_count_ += num;
   return num;
 } 
 int message_queue::wait_not_empty_cond(const time_value *timeout)

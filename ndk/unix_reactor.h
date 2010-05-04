@@ -192,6 +192,10 @@ namespace ndk
 
     // Handle readable event
     virtual int handle_input(ndk_handle handle);
+
+#ifdef NDK_DUMP
+    virtual void dump();
+#endif
   protected:
     unix_reactor_notify_tuple *alloc_notify_tuple(event_handler *eh,
                                                   void *msg);
@@ -259,6 +263,9 @@ namespace ndk
     {
       return this->notify_handler_->purge_pending_notifications(eh, mask);
     }
+#ifdef NDK_DUMP
+    virtual void dump();
+#endif
   protected:
     unix_reactor();
 

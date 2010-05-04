@@ -110,18 +110,8 @@ int epoll_reactor_base::dispatch_io_events()
       // without being removed from the event set) the EPOLLHUP and/or
       // EPOLLERR bits will be set in pfd->events.
       {
-        int r = this->remove_handler_i(pfd->data.fd, 
-                                       event_handler::all_events_mask);
-        time_t now = ::time(0);
-        NDK_LOG("dispatch_io [%s] [handle = %d] trigger up/error [0x%x]"
-                " events![r = %d] startpe = %p endpe = %p curr = %p",
-                ::ctime(&now),
-                pfd->data.fd,
-                pfd->events,
-                r,
-                this->start_pevents_,
-                this->end_pevents_,
-                pfd);
+        this->remove_handler_i(pfd->data.fd, 
+                               event_handler::all_events_mask);
         ++pfd;
         continue;
       }else
