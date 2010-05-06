@@ -52,11 +52,11 @@ namespace ndk
     }
 
     // Gets the message queue associated with this task.
-    message_queue *msg_queue(void)
+    inline message_queue *msg_queue(void)
     { return this->msg_queue_; }
 
     // Sets the message queue associated with this task.
-    void msg_queue(message_queue *msg_queue)
+    inline void msg_queue(message_queue *msg_queue)
     { 
       if (this->delete_msg_queue_)
       {
@@ -67,20 +67,20 @@ namespace ndk
     }
 
     // Insert message into the message queue tail.
-    int putq(message_block *mb, const time_value* timeout = 0)
+    inline int putq(message_block *mb, const time_value* timeout = 0)
     { return this->msg_queue_->enqueue_tail(mb, timeout); }
 
     // Extract the first message from the queue. 
-    int getq(message_block *&mb, const time_value* timeout = 0)
+    inline int getq(message_block *&mb, const time_value* timeout = 0)
     { return this->msg_queue_->dequeue_head(mb, timeout); }
 
     // Extract n message from the queue head;
-    int getq_n(message_block *&mb, int number = -1, 
-               const time_value* timeout = 0)
+    inline int getq_n(message_block *&mb, int number = -1, 
+                      const time_value* timeout = 0)
     { return this->msg_queue_->dequeue_head_n(mb, number, timeout); }
 
     // Return a message to the queue.
-    int ungetq(message_block *mb, const time_value* timeout = 0)
+    inline int ungetq(message_block *mb, const time_value* timeout = 0)
     { return this->msg_queue_->enqueue_head(mb, timeout); }
 
   protected:
