@@ -29,26 +29,22 @@
                               CPPFILES = \
                                          log_to_stdout.cpp  \
                                          logger.cpp  \
-                                         task_base.cpp  \
                                          cache_manager.cpp  \
                                          timer_queue.cpp  \
                                          thread.cpp  \
                                          thread_manager.cpp  \
                                          mem_pool.cpp  \
                                          time_value.cpp  \
+																				 inet_addr.cpp  \
                                          log_to_file.cpp  \
                                          reactor.cpp  \
-                                         inet_addr.cpp  \
                                          log_manager.cpp  \
                                          message_queue.cpp  \
                                          unix_reactor.cpp  \
                                          select_reactor.cpp  \
                                          strace.cpp  \
-                                         acceptor.cpp  \
                                          epoll_reactor.cpp  \
-                                         task.cpp  \
                                          ndk.cpp  \
-                                         connector.cpp  \
                                          token.cpp   
 
                                 CFILES = \
