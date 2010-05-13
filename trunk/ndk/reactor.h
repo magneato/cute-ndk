@@ -17,60 +17,66 @@
 #include "ndk/time_value.h"
 #include "ndk/thread_mutex.h"
 #include "ndk/reactor_impl.h"
+#include "ndk/epoll_reactor.h"
 #include "ndk/event_handler.h"
 
 namespace ndk
 {
-  // Forward declarations
-  //
-  class reactor_impl;
-  class event_handler;
-  class token;
-
   /**
    * @class reactor
    *
    * @brief 
    */
-  class reactor
+  class reactor : public singleton<reactor, thread_mutex>
   {
-    friend class singleton<reactor, thread_mutex>;
   public:
     /**
      * Create the reactor using @a implementation.  The flag
      * @a delete_implementation tells the reactor whether or not to
      * delete the @a implementation on destruction.
      */
-    reactor(reactor_impl* implementation = 0, 
-            int delete_implementation = 0);
+    reactor(reactor_impl* impl= 0, int delete_impl= 0)
+      : reactor_impl_(impl),
+      delete_impl_(delete_impl)
+    {
+      if (this->reactor_impl_ == 0)
+      {
+        /**
+         * epoll reactor is default reactor in linux platfrom.
+         */
+        this->reactor_impl_ = new epoll_reactor<reactor_null_token>();
+        this->delete_impl_  = 1;
+      }
+    }
+
     /**
      * Close down and release all resources.
      * Any notifications that remain queued on this reactor instance
      * are lost 
      */
-    ~reactor();
-
-    // Get pointer to a process-wide Reactor.
-    static reactor *instance(void);
-
-    /**
-     * Set pointer to a process-wide reactor and return existing
-     * pointer.  If <delete_reactor> != 0 then we'll delete the 
-     * reactor at destruction time.
-     */
-    static reactor *instance(reactor *r);
-
-    // Delete the dynamically allocated Singleton
-    static void close_singleton(int delete_reactor = 0);
+    ~reactor()
+    {
+      if (this->reactor_impl_ && this->delete_impl_)
+        delete this->reactor_impl_;
+      this->reactor_impl_ = 0;
+    }
 
     // ++ reactor event loop management methods.
     // These methods work with an instance of a reactor.
     /**
      * Run the event loop until the 
-     * <Reactor::handle_events/Reactor::alertable_handle_events>
-     * method returns -1 or the <end_reactor_event_loop> method is invoked.
+     * <reactor::handle_events> method returns -1 or the 
+     * <end_reactor_event_loop> method is invoked.
      */
-    int run_reactor_event_loop();
+    inline int run_reactor_event_loop()
+    {
+      while (1)
+      {
+        if (this->reactor_impl_->handle_events() == -1)
+          break;
+      }
+      return -1;
+    }
 
     /**
      * This event loop driver blocks for up to <max_wait_time> before
@@ -78,7 +84,10 @@ namespace ndk
      * <max_wait_time> can be 0, in which case this method blocks
      * indefinitely until events occur.
      */
-    int handle_events(const time_value *max_wait_time = 0);
+    inline int handle_events(const time_value *max_wait_time = 0)
+    {
+      return this->reactor_impl_->handle_events(max_wait_time);
+    }
 
     // ++ Register and remove handlers.
     /**
@@ -91,18 +100,36 @@ namespace ndk
      * The reactor of the <eh> will be assigned to *this*
      * automatic, restore the original reactor if register failed
      */
-    int register_handler(event_handler *eh,
-                         reactor_mask mask);
+    inline int register_handler(event_handler *eh,
+                                reactor_mask mask)
+    {
+      reactor *old_r = eh->get_reactor();
+      eh->set_reactor(this);
+      int result = this->reactor_impl_->register_handler(eh,
+                                                         mask);
+      if (result == -1)
+        eh->set_reactor(old_r);
+      return result;
+    }
 
     /**
      * Register handler for I/O events.
      * Same as register_handler(event_handler*, reactor_mask),
      * except handle is explicitly specified.
      */
-    int register_handler(ndk_handle io_handle,
+    int register_handler(ndk_handle handle,
                          event_handler *eh,
-                         reactor_mask mask);
-
+                         reactor_mask mask)
+    {
+      reactor *old_r = eh->get_reactor();
+      eh->set_reactor(this);
+      int result = this->reactor_impl_->register_handler(handle,
+                                                         eh,
+                                                         mask);
+      if (result == -1)
+        eh->set_reactor(old_r);
+      return result;
+    }
     /**
      * Remove <masks> from <handle> registration.
      * For I/O handles, <masks> are removed from the Reactor.  Unless
@@ -110,16 +137,18 @@ namespace ndk
      * event_handler::handle_close() will be called with the <masks>
      * that have been removed. 
      */
-    int remove_handler(ndk_handle handle, 
-                       reactor_mask masks);
+    inline int remove_handler(ndk_handle handle, 
+                              reactor_mask mask)
+    { return this->reactor_impl_->remove_handler(handle, mask); }
 
     /**
      * Remove <masks> from <eh> registration.
      * Same as remove_handler(ndk_handle, reactor_mask), except
      * <handle> comes from event_handler::handle().
      */
-    int remove_handler(event_handler *eh,
-                       reactor_mask masks);
+    inline int remove_handler(event_handler *eh,
+                              reactor_mask mask)
+    { return this->reactor_impl_->remove_handler(eh, mask); }
 
     // ++ Timer management.
     /**
@@ -129,21 +158,29 @@ namespace ndk
      * list of timers.  This timer_id value can be used to cancel the 
      * timer with the cancel_timer() call. 
      */
-    int schedule_timer(event_handler *eh,
+    inline int schedule_timer(event_handler *eh,
                        const void *arg,
                        const time_value &delay,
-                       const time_value &interval = time_value::zero);
+                       const time_value &interval = time_value::zero)
+    {
+      return this->reactor_impl_->schedule_timer(eh,
+                                                 arg,
+                                                 delay,
+                                                 interval);
+    }
 
     // Usage please refe to 'ndk/timer_queue.h'
-    int crontab(const event_handler *eh, 
+    inline int crontab(const event_handler *eh, 
                 const void *arg, 
-                const char *entry);
+                const char *entry)
+    { return this->reactor_impl_->crontab(eh, arg, entry); }
 
     /**
      * Resets the crontab-entry of the timer represented by <timer_id> to
      * <entry>.  Returns 0 if successful, -1 if not.
      */
-    int reset_crontab(int timer_id, const char *entry);
+    inline int reset_crontab(int timer_id, const char *entry)
+    { return this->reactor_impl_->reset_crontab(timer_id, entry); }
 
     /**
      * Reset recurring timer interval.
@@ -155,8 +192,12 @@ namespace ndk
      * if successful, -1 if not.
      * This change will not take effect until the next timeout.
      */
-    int reset_timer_interval(int timer_id,
-                             const time_value &interval);
+    inline int reset_timer_interval(int timer_id,
+                             const time_value &interval)
+    {
+      return this->reactor_impl_->reset_timer_interval(timer_id,
+                                                       interval);
+    }
 
     /**
      * Cancel timer.
@@ -175,9 +216,14 @@ namespace ndk
      * the <arg> in handle_close().
      * avoid memory leaks, also pass the argument <event_handler::TIMER_MASK>. 
      */
-    int cancel_timer(int timer_id,
+    inline int cancel_timer(int timer_id,
                      const void **arg = 0,
-                     int dont_call_handle_close = 1);
+                     int dont_call_handle_close = 1)
+    {
+      return this->reactor_impl_->cancel_timer(timer_id,
+                                               arg,
+                                               dont_call_handle_close);
+    }
 
     /**
      * Cancel all timers associated with event handler.
@@ -193,8 +239,12 @@ namespace ndk
      *
      * Returns number of handlers cancelled.
      */
-    int cancel_timer(event_handler *eh,
-                     int dont_call_handle_close = 1);
+    inline int cancel_timer(event_handler *eh,
+                            int dont_call_handle_close = 1)
+    {
+      return this->reactor_impl_->cancel_timer(eh,
+                                               dont_call_handle_close);
+    }
 
     /**
      * Dispatch user specified events.
@@ -202,7 +252,8 @@ namespace ndk
      * Handler will be dispatched irrespective of whether it is
      * registered, not registered, or suspended in the Reactor.
      */
-    int notify(event_handler *eh, void *msg);
+    inline int notify(event_handler *eh, void *msg)
+    { return this->reactor_impl_->notify(eh, msg); }
 
     /**
      * Purge any notifications pending in this reactor for the specified
@@ -211,20 +262,24 @@ namespace ndk
      * to wake up the reactor itself). Returns the number of
      * notifications purged.  Returns -1 on error.
      */
-    int purge_pending_notifications(event_handler *eh = 0,
-                                    reactor_mask mask = event_handler::all_events_mask);
+    inline int purge_pending_notifications(event_handler *eh = 0,
+                                           reactor_mask mask = event_handler::all_events_mask)
+    { return this->reactor_impl_->purge_pending_notifications(eh, mask); }
 
     // 
-    int close(void);
+    inline int close(void)
+    { return this->reactor_impl_->close(); }
 
     // Get token.
-    token &lock();
+    inline token &lock()
+    { return this->reactor_impl_->lock(); }
 
     // Get the implementation class
     reactor_impl* implementation();
 
 #ifdef NDK_DUMP
-    void dump();
+    inline void dump()
+    { this->reactor_impl_->dump(); }
 #endif
   protected:
     // Delegation/implementation class that all methods will be
@@ -234,10 +289,6 @@ namespace ndk
     // Flag used to indicate whether we are responsible for cleaning up
     // the implementation instance
     int delete_impl_;
-
-    // Pointer to a process-wide reactor singleton.
-    static reactor *reactor_;
-    static thread_mutex instance_lock_;
   private:
     // Deny access since member-wise won't work...
     reactor(const reactor &);
@@ -245,6 +296,5 @@ namespace ndk
   };
 } // namespace ndk
 
-#include "ndk/reactor.inl"
 #endif // NDK_REACTOR_H_
 

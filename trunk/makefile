@@ -27,7 +27,6 @@
                                  VPATH = ndk
                             OBJECT_DIR = ./.obj/
                               CPPFILES = \
-                                         log_to_stdout.cpp  \
                                          logger.cpp  \
                                          cache_manager.cpp  \
                                          timer_queue.cpp  \
@@ -37,7 +36,6 @@
                                          time_value.cpp  \
 																				 inet_addr.cpp  \
                                          log_to_file.cpp  \
-                                         reactor.cpp  \
                                          log_manager.cpp  \
                                          message_queue.cpp  \
                                          unix_reactor.cpp  \

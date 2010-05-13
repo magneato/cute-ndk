@@ -196,7 +196,11 @@ namespace ndk
     //
     int apply_module_config(module_entry *);
 
-    int apply_module_config_i();
+    inline int apply_module_config_i()
+    { 
+      this->output_list_ = this->log_manager_->get_output_list(this->module_entry_);
+      return 0;
+    }
 
   private:
     // 
