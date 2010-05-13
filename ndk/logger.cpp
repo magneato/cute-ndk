@@ -15,11 +15,6 @@ int logger::apply_module_config(module_entry *entry)
   this->module_entry_ = entry;
   return this->apply_module_config_i();
 }
-int logger::apply_module_config_i()
-{
-  this->output_list_ = this->log_manager_->get_output_list(this->module_entry_);
-  return 0;
-}
 int logger::output(const char *record, const int len, int log_type, time_t now)
 {
   if (this->output_list_.empty()) return 0;
