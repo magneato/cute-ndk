@@ -315,6 +315,7 @@ public:
       net_log->rinfo("%p refer count = %d", 
                      this->cache_obj_,
                      this->cache_obj_->refcount());
+      this->cache_obj_ = 0;
     }
     if (this->content_length_ > 0 && this->send_bytes_ == this->content_length_)
     {
@@ -326,7 +327,6 @@ public:
     }
     if (this->recv_msg_ok_)
       --g_payload;
-    this->cache_obj_ = 0;
   }
   inline virtual void set_remote_addr(const ndk::inet_addr &remote_addr)
   { this->remote_addr_ = remote_addr; }
@@ -926,8 +926,7 @@ int main(int argc, char *argv[])
     net_log->error("open acceptor failed");
     return -1;
   }
-  g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(65535,
-                                                                         32,
+  g_cache_manager = new ndk::cache_manager<std::string, ndk::null_mutex>(32,
                                                                          20*1024*1024,
                                                                          high_water,
                                                                          low_water);

@@ -47,7 +47,7 @@ namespace ndk
     // called by acceptor or connector
     // The <arg> default is its generator which is 
     // acceptor or Connector
-    virtual int open(void *arg = 0)
+    virtual int open(void * = 0)
     { return -1; }
 
     /**

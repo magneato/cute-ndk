@@ -358,8 +358,6 @@ module_entry *log_manager::get_module_cfg_entry(const char *mname)
 }
 std::deque<log_output *> log_manager::get_output_list(module_entry *me)
 {
-  assert(me != 0);
-
   std::deque<log_output *> output_objs;
   module_entry::output_list_iter iter = me->output_list_.begin();
   char *value = 0;
