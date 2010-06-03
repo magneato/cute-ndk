@@ -350,34 +350,6 @@ protected:
     assert(this->running_list_ != 0);
 
     aio_opt_t *itor = this->running_list_;
-    int result = 0;
-#if 0
-    aio_opt_t *prev = itor;
-    int result = 0;
-    while (itor != 0)
-    {
-      if (itor->ptr_ == aioopt)
-      {
-        aio_opt_t *p = itor;
-        if (itor == this->running_list_)
-        {
-          this->running_list_ = itor->next_;
-        }else
-        {
-          prev->next_ = itor->next_; 
-          itor = prev->next_;
-        }
-        p->next_ = 0;
-        this->free_aio_opt_i(p, this->free_running_list_);
-        result = 1;
-        break;  // !!
-      }else
-      {
-        prev = itor;
-        itor = itor->next_;
-      }
-    }
-#else
     aio_opt_t *free_ptr = 0;
     if (itor->ptr_ == aioopt)
     {
@@ -401,7 +373,7 @@ protected:
     assert(free_ptr != 0);
     free_ptr->next_ = 0;
     this->free_aio_opt_i(free_ptr, this->free_running_list_);
-#endif
+
     if (this->running_list_ == 0 
         || this->running_list_->next_ == 0)
       this->running_list_tail_ = this->running_list_;

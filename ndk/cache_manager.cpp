@@ -12,8 +12,7 @@
 namespace ndk
 {
 template<typename KEY, typename SYNCH_MUTEX>
-cache_manager<KEY, SYNCH_MUTEX>::cache_manager(int max_size,
-                                               int min_obj_size,
+cache_manager<KEY, SYNCH_MUTEX>::cache_manager(int min_obj_size,
                                                int max_obj_size,
                                                int high_water_mark,
                                                int low_water_mark,

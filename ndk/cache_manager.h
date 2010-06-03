@@ -29,8 +29,7 @@ namespace ndk
   class cache_manager
   {
   public:
-    cache_manager(int max_size = 65535,           // max cache objects.
-                  int min_obj_size = 1024,        // min size of cache object.
+    cache_manager(int min_obj_size = 1024,        // min size of cache object.
                   int max_obj_size = 20*1024*1024,// max size of cache object. 
                   int high_water_mark = 1024,     // max size of cache in MB
                   int low_water_mark  = 960,      // min size of cache in MB
@@ -104,15 +103,15 @@ namespace ndk
     typedef typename std::map<KEY, cache_object *>::iterator cache_map_itor;
 
   protected:
-    int cobj_min_size_;
+    size_t cobj_min_size_;
 
-    int cobj_max_size_;
+    size_t cobj_max_size_;
 
-    long water_mark_;
+    unsigned long water_mark_;
 
-    long high_water_mark_;
+    unsigned long high_water_mark_;
 
-    long low_water_mark_;
+    unsigned long low_water_mark_;
 
     SYNCH_MUTEX cache_mutex_;
 

@@ -10,18 +10,36 @@
 //========================================================================
 
 #include <ndk/ndk.h>
-#include <ndk/ndk_os.h>
-#include <ndk/ndk_log.h>
+#include <ndk/logger.h>
 #include <ndk/reactor.h>
 #include <ndk/acceptor.h>
 #include <ndk/date_time.h>
 #include <ndk/inet_addr.h>
+#include <ndk/cache_manager.h>
 #include <ndk/epoll_reactor.h>
+#include <ndk/asynch_file_io.h>
 
 #include <stdarg.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
-#include "http_connection.h"
+#include "http_client.h"
+#include "buffer_manager.h"
+#include "dispatch_data_task.h"
+
+// global vars.
+int g_listen_port = 8000;
+int g_concurrency_num = 1000;
+std::string g_doc_root = ".";
+int g_bandwidth = 1000;
+ndk::asynch_file_io **g_aio_task = 0;
+dispatch_data_task *g_dispatch_data_task = 0;
+int g_aio_task_size = 1;
+int g_aio_task_thread_size = 2;
+int g_dispatch_data_task_thread_size = 1;
+ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager = 0;
+buffer_manager *file_io_cache_mgr = new buffer_manager(1024*1024*1);
+//
 
 static void guard_log(const char *format, ...)
 {
@@ -35,9 +53,9 @@ static void guard_log(const char *format, ...)
 }
 void sig_handle()
 {
-  signal(SIGHUP, SIG_IGN);
+  signal(SIGHUP,  SIG_IGN);
   signal(SIGPIPE, SIG_IGN);
-  signal(SIGINT, SIG_IGN);
+  signal(SIGINT,  SIG_IGN);
 }
 void guard_process()
 {
@@ -48,13 +66,13 @@ void guard_process()
   while(1)
   {
     char st[32] = {0};
-    pid_t childpid = fork();
+    pid_t childpid = ::fork();
     if (childpid < 0)      // < 0 is wrong! 
     {
       ndk::date_time().to_str(st, sizeof(st));
       guard_log("[%s] fork failed [%s] !\n",
                 st,
-                strerror(ndk_os::last_error()));
+                strerror(errno));
       ::exit(-1);
     }else 
       if (childpid == 0) return ;
@@ -100,7 +118,7 @@ void guard_process()
                 WTERMSIG(status));
       // goto fork
     }
-    ndk_os::sleep(time_value(1));
+    ndk::sleep(ndk::time_value(2));
   }
 }
 static const char *svc_name = "fcached";
@@ -109,25 +127,62 @@ static const char *compile_date = __DATE__;
 static const char *compile_time = __TIME__;
 
 // accept http socket connection.
-ndk::acceptr<http_connection> g_http_acceptor;
+ndk::acceptor<http_client> *g_http_acceptor;
 
-static ndk::ndk_log *main_log = ndk::log_manager::instance()->get_logger("main");
+void print_usage()
+{
+  printf("Usage: fcache [OPTION...]\n\n");
+  printf("  -c  concurrency       Number of multiple requests to perform at a time.\n"); 
+  printf("  -p  port              Listen port(default is 8800)'\n");
+  printf("  -r  path              Document root(default is current path)'\n");
+  printf("  -b  kbps              Max of ouput bandwidth'\n");
+  printf("  -l  path              Logger config name'\n");
+  printf("  -H  MB                Cache manager high water mark'\n");
+  printf("  -L  MB                Cache manager low water mark'\n");
+  printf("  -v                    Output version info\n");
+  printf("  -h                    Help info\n");
+  printf("\n");
+  printf("You can use 'watch curl -s http://localhost:port/' to monitor me.\n\n");
+}
+
+//
+static ndk::logger *main_log = ndk::log_manager::instance()->get_logger("root");
+
 int main(int argc, char *argv[])
 { 
+  if (argc == 1)
+  {
+    print_usage();
+    return 0;
+  }
   //
-  int listen_port = 8000;
   int in_debug_mode = 0;
   int in_guard_mode = 0;
-  char *log_config  = "../logger_config.ini";
+
+  int high_water_mark = 0;
+  int lower_water_mark = 0;
+
+  int max_cache_size = 16*1024*1024;
+  int min_cache_size = 32;
+
+  int count = 0;
   
+  std::string log_config;
+
   setbuf(stderr, 0);
 
-  int c = 0;
-  while((c = getopt(argc, argv, "p:l:dg")) != -1)
+  // parse args
+  opterr = 0;
+  int c = -1;
+  const char *opt = ":c:p:r:d:l:b:H:L:hvM:m:";
+  while((c = getopt(argc, argv, opt)) != -1)
   {
     switch (c)
     {
     case 'v':        // version
+#ifndef DESC
+# define DESC ""
+#endif
       fprintf(stderr, "%s version %s | Compiled %s %s. %s\n"
               , svc_name
               , version
@@ -136,27 +191,63 @@ int main(int argc, char *argv[])
               , DESC
              );
       return 0;
-    case 'p':
-      listen_port = atoi(optarg);
+    case 'c':
+      g_concurrency_num = ::atoi(optarg);
+      ++count;
       break;
-    case 'l':
-      log_config = optarg;
+    case 'p':
+      g_listen_port = ::atoi(optarg);
+      ++count;
+      break;
+    case 'r':
+      g_doc_root = optarg;
+      ++count;
       break;
     case 'd':
       in_debug_mode = 1;
       break;
+    case 'l':
+      log_config = optarg;
+      ++count;
+      break;
     case 'g':
       in_guard_mode = 1;
       break;
+    case 'b':
+      g_bandwidth = ::atoi(optarg);
+      ++count;
+      break;
+    case 'H':
+      high_water_mark = ::atoi(optarg);
+      ++count;
+      break;
+    case 'L':
+      lower_water_mark = ::atoi(optarg);
+      ++count;
+      break;
+    case 'M':
+      max_cache_size = ::atoi(optarg);
+      ++count;
+      break;
+    case 'm':
+      min_cache_size = ::atoi(optarg);
+      ++count;
+      break;
+    case 'h':
+      print_usage();
+      return 0;
+    case ':':
+      fprintf(stderr, "\nOption -%c requires an operand\n\n", optopt);
+    case '?':
     default:
-      fprintf(stderr, "Usage: fcached [OPTION...]\n\n");
-      fprintf(stderr, "  -v,                          Print program version.\n");
-      fprintf(stderr, "  -d,                          Lanuch under debug mode.\n");
-      fprintf(stderr, "  -g                           Lanuch under guard mode.\n");
-      fprintf(stderr, "  -p number                    Listen port.\n");
-      fprintf(stderr, "  -l FILE,                     Logger config file name.\n");
+      print_usage();
       return 0;
     }
+  }
+  if (count != 9)
+  {
+    print_usage();
+    return 0;
   }
   if (in_debug_mode)
   {
@@ -164,27 +255,45 @@ int main(int argc, char *argv[])
   }else if (in_guard_mode)
   {
     guard_process();
-    sig_handle();
   }
-  if (ndk::log_manager::instance()->init(log_config) != 0)
+  sig_handle();
+  if (ndk::log_manager::instance()->init(log_config.c_str()) != 0)
   {
     fprintf(stderr, "init logger failed\n");
     return -1;
   }
-  ndk::mem_pool::instance()->init(20*1024*1024, 10, 50);
-  ndk::epoll_reactor *ep = new ndk::epoll_reactor();
-  if (ep->open() != 0)
+  ndk::epoll_reactor<ndk::reactor_token> *r_impl
+    = new ndk::epoll_reactor<ndk::reactor_token>();
+  if (r_impl->open() != 0)
   {
     main_log->error("open epoll reactor failed");
     return -1;
   }
-  ndk::reactor::instance(new ndk::reactor(ep));
-  ndk::inet_addr local_addr(listen_port);
+  ndk::reactor::instance(new ndk::reactor(r_impl));
+
+  g_http_acceptor = new ndk::acceptor<http_client>();
+  ndk::inet_addr local_addr(g_listen_port);
   if (g_http_acceptor->open(local_addr, ndk::reactor::instance()) != 0)
   {
     main_log->error("open acceptor failed");
     return -1;
   }
+  g_cache_manager = 
+    new ndk::cache_manager<std::string, ndk::thread_mutex>(min_cache_size,
+                                                           max_cache_size,
+                                                           high_water_mark,
+                                                           lower_water_mark);
+  g_dispatch_data_task = new dispatch_data_task[g_dispatch_data_task_thread_size];
+
+  g_aio_task = new ndk::asynch_file_io*[g_aio_task_size];
+  for (int i = 0; i < g_aio_task_size; ++i)
+  {
+    g_aio_task[i] = new ndk::asynch_file_io(128);
+    g_aio_task[i]->open(g_aio_task_thread_size);
+  }
+
+  //
   ndk::reactor::instance()->run_reactor_event_loop();
+  main_log->error("reactor exit! [%s]", strerror(errno));
   return 0;
 }
