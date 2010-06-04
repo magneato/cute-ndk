@@ -30,6 +30,8 @@ public:
       : stopped(0),
       session_id(-1),
       bytes_to_send_per_timep(0),
+      content_length_(0),
+      transfer_bytes_(0),
       client(0)
     { }
 
@@ -37,10 +39,11 @@ public:
     { }
     
   public:
-    static int count;
     int stopped;
     int session_id;
     int bytes_to_send_per_timep;
+    uint64_t content_length_;
+    uint64_t transfer_bytes_;
     http_client *client;
     transfer_agent *transfer_agent_;
     ndk::time_value last_check_bandwidth_time;
@@ -51,11 +54,7 @@ public:
   dispatch_queue_not_empty_cond_(dispatch_queue_mtx_)
   { }
 
-  int open()
-  {
-    STRACE("");
-    return this->activate(ndk::thread::thr_join, 1);
-  }
+  int open();
 
   virtual int svc();
 
@@ -70,7 +69,7 @@ protected:
 
   void delete_job_i(dispatch_job *job);
 private:
-  int task_idle_;
+  volatile int task_idle_;
   ndk::time_value poll_before_;
   ndk::time_value poll_after_;
   ndk::time_value diff_time_;

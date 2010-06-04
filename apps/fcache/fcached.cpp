@@ -133,12 +133,15 @@ void print_usage()
 {
   printf("Usage: fcache [OPTION...]\n\n");
   printf("  -c  concurrency       Number of multiple requests to perform at a time.\n"); 
-  printf("  -p  port              Listen port(default is 8800)'\n");
-  printf("  -r  path              Document root(default is current path)'\n");
-  printf("  -b  kbps              Max of ouput bandwidth'\n");
-  printf("  -l  path              Logger config name'\n");
-  printf("  -H  MB                Cache manager high water mark'\n");
-  printf("  -L  MB                Cache manager low water mark'\n");
+  printf("  -p  port              Listen port(default is 8800)\n");
+  printf("  -r  path              Document root(default is current path)\n");
+  printf("  -b  kbps              Max of ouput bandwidth\n");
+  printf("  -l  path              Logger config name\n");
+  printf("  -H  MB                Cache manager high water mark\n");
+  printf("  -L  MB                Cache manager low water mark\n");
+  printf("  -M  bytes             Max cache file size\n");
+  printf("  -m  bytes             Min cache file size\n");
+  printf("  -a  number            aio thread number\n");
   printf("  -v                    Output version info\n");
   printf("  -h                    Help info\n");
   printf("\n");
@@ -174,7 +177,7 @@ int main(int argc, char *argv[])
   // parse args
   opterr = 0;
   int c = -1;
-  const char *opt = ":c:p:r:d:l:b:H:L:hvM:m:";
+  const char *opt = ":c:p:r:d:l:b:H:L:hvM:m:a:";
   while((c = getopt(argc, argv, opt)) != -1)
   {
     switch (c)
@@ -233,6 +236,10 @@ int main(int argc, char *argv[])
       min_cache_size = ::atoi(optarg);
       ++count;
       break;
+    case 'a':
+      g_aio_task_thread_size = ::atoi(optarg);
+      ++count;
+      break;
     case 'h':
       print_usage();
       return 0;
@@ -244,7 +251,7 @@ int main(int argc, char *argv[])
       return 0;
     }
   }
-  if (count != 9)
+  if (count != 10)
   {
     print_usage();
     return 0;
@@ -284,6 +291,8 @@ int main(int argc, char *argv[])
                                                            high_water_mark,
                                                            lower_water_mark);
   g_dispatch_data_task = new dispatch_data_task[g_dispatch_data_task_thread_size];
+  for (int i = 0; i < g_dispatch_data_task_thread_size; ++i)
+    g_dispatch_data_task[i].open();
 
   g_aio_task = new ndk::asynch_file_io*[g_aio_task_size];
   for (int i = 0; i < g_aio_task_size; ++i)

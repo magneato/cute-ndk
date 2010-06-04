@@ -37,6 +37,9 @@ public:
   char *malloc()
   {
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
+    ++this->size_;
+    printf("malloc size = %d\n", this->size_);
+    return new char[this->block_size()];
     if (this->buffer_list_ == 0)
     {
       this->buffer_list_ = this->alloc_item();
@@ -53,8 +56,12 @@ public:
 
   void free(char *p)
   {
-    assert(p != 0);
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
+    --this->size_;
+    printf("free %p size = %d\n", p, this->size_);
+    delete []p;
+    return ;
+    assert(p != 0);
     buffer_item *item = this->alloc_item();
     item->buffer_ = p;
     item->next_ = this->buffer_list_;
@@ -84,6 +91,7 @@ protected:
     }
     buffer_item *item = this->free_buffer_list_;
     this->free_buffer_list_ = this->free_buffer_list_->next_;
+    item->next_ = 0;
     return item;
   }
   void free_item(buffer_item *item)
@@ -93,6 +101,7 @@ protected:
   }
 private:
   size_t block_size_;
+  size_t size_;
   buffer_item *buffer_list_;
   buffer_item *free_buffer_list_;
   ndk::thread_mutex mutex_;

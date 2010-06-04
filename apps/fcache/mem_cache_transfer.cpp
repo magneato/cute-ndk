@@ -85,21 +85,23 @@ int mem_cache_transfer::open(const fileinfo_ptr &finfo)
   }
   return 0;
 }
-int mem_cache_transfer::transfer_data(int max_size, int &transfer_bytes)
+int mem_cache_transfer::transfer_data(ndk::ndk_handle handle,
+                                      int max_size, 
+                                      int &transfer_bytes)
 {
   int result = 0;
-  int bytes_to_send = 0;
+  uint64_t bytes_to_send = 0;
   while (transfer_bytes < max_size 
          && this->transfer_bytes_ < this->content_length_)
   {
     bytes_to_send = this->content_length_ - this->transfer_bytes_;
-#if 0
-    result = ndk::send((char *)this->cache_obj_->data() 
-                       + this->start_pos
-                       + this->transfer_bytes_, 
-                       bytes_to_send > ONCE_TRANSFER_PACKET_SIZE ? 
-                       ONCE_TRANSFER_PACKET_SIZE : bytes_to_send);
-#endif
+    result = ndk::send(handle,
+                       (char *)this->cache_obj_->data() 
+                       + int(this->start_pos_)
+                       + int(this->transfer_bytes_), 
+                       bytes_to_send > uint64_t(ONCE_TRANSFER_PACKET_SIZE) ? 
+                       uint64_t(ONCE_TRANSFER_PACKET_SIZE) : bytes_to_send,
+                       0);
     if (result >= 0)
     {
       this->transfer_bytes_ += result;  // statistic total flux.

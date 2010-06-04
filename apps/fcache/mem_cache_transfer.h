@@ -31,7 +31,9 @@ public:
 
   virtual ~mem_cache_transfer();
 
-  virtual int transfer_data(int max_size, int &transfer_bytes);
+  virtual int transfer_data(ndk::ndk_handle h,
+                            int max_size, 
+                            int &transfer_bytes);
 
   virtual int close();
 protected:

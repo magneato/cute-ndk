@@ -29,7 +29,9 @@ public:
 
   virtual ~serial_file_transfer();
 
-  virtual int transfer_data(int max_size, int &transfer_bytes);
+  virtual int transfer_data(ndk::ndk_handle h,
+                            int max_size, 
+                            int &transfer_bytes);
 
   virtual void handle_aio_read(const ndk::aio_opt_t *aio_result);
 
