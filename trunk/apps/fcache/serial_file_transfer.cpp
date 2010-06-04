@@ -10,6 +10,7 @@ extern buffer_manager *file_io_cache_mgr;
 
 #define ONCE_TRANSFER_PACKET_SIZE   4096
 
+static int new_count = 0;
 serial_file_transfer::serial_file_transfer(uint64_t start_pos,
                                            uint64_t content_length)
   : handle_(NDK_INVALID_HANDLE),
@@ -27,10 +28,13 @@ serial_file_transfer::serial_file_transfer(uint64_t start_pos,
   buffer_(0),
   reserve_buffer_(0)
 {
+  ++new_count;
 }
 
 serial_file_transfer::~serial_file_transfer()
 {
+  --new_count;
+  printf("%p %p c = %d\n", this->buffer_, this->reserve_buffer_, new_count);
   if (this->buffer_)
   {
     file_io_cache_mgr->free(this->buffer_);
@@ -65,8 +69,8 @@ int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
       return -1;
     }
     this->fileinfo_->file_handle(this->handle_);
-    this->fileinfo_->incr_fd_ref();
   }
+  this->fileinfo_->incr_fd_ref();
 
   this->start_read();
 
@@ -74,8 +78,10 @@ int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
 }
 int serial_file_transfer::start_read()
 {
-  if (this->aio_inprogress_)
+  if (this->aio_inprogress_ || this->reserve_buffer_ != 0)
     return -1;
+  file_io_log->debug("start read offset = %lld",
+                     this->offset_);
 
   this->reserve_buffer_ = (char *)file_io_cache_mgr->malloc();
   assert(this->reserve_buffer_ != 0);
@@ -84,7 +90,7 @@ int serial_file_transfer::start_read()
                                this->offset_,
                                this->reserve_buffer_,
                                this,
-                               ndk::aio_read,
+                               ndk::AIO_READ,
                                0) != 0)
   {
     file_io_log->warning("start aio failed! [h = %d][file: %s]",
@@ -98,7 +104,9 @@ int serial_file_transfer::start_read()
   ++this->aio_inprogress_;
   return 0;
 }
-int serial_file_transfer::transfer_data(int max_size, int &transfer_bytes)
+int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
+                                        int max_size, 
+                                        int &transfer_bytes)
 {
   //
   if (this->buffer_ == 0) 
@@ -129,10 +137,11 @@ int serial_file_transfer::transfer_data(int max_size, int &transfer_bytes)
          && this->transfer_bytes_ < this->content_length_)
   {
     bytes_to_send = this->buffer_size_ - this->send_bytes_;
-#if 0
-    result = ndk::send(this->buffer_ + this->send_bytes_, 
-                       bytes_to_send > ONCE_TRANSFER_PACKET_SIZE ? ONCE_TRANSFER_PACKET_SIZE : bytes_to_send);
-#endif
+    result = ndk::send(handle,
+                       this->buffer_ + this->send_bytes_, 
+                       bytes_to_send > ONCE_TRANSFER_PACKET_SIZE ? 
+                       ONCE_TRANSFER_PACKET_SIZE : bytes_to_send,
+                       0);
     if (result >= 0)
     {
       this->transfer_bytes_ += result;  // statistic total flux.
@@ -143,6 +152,8 @@ int serial_file_transfer::transfer_data(int max_size, int &transfer_bytes)
     else 
       return 0;
   }
+  if (this->transfer_bytes_ == this->content_length_)
+    return transfer_bytes;
 
   // prefetch the next cache block.
   if (this->send_bytes_ >= this->buffer_size_/2)
@@ -156,8 +167,10 @@ int serial_file_transfer::transfer_data(int max_size, int &transfer_bytes)
     }
     ndk::guard<ndk::thread_mutex> g(this->buffer_mtx_);
     if (this->eof_ || this->file_io_error_)
-      return -1;
-    if (this->aio_inprogress_ == 0)
+    {
+      if (this->send_bytes_ == this->buffer_size_)
+        return -1;
+    }else if (this->aio_inprogress_ == 0 || this->reserve_buffer_ == 0)
       this->start_read();
   }
   return transfer_bytes;
@@ -202,14 +215,14 @@ int serial_file_transfer::close()
 }
 int serial_file_transfer::close_i()
 {
-  int result = ndk::aio_canceled;
+  int result = ndk::AIO_CANCELED;
   if (this->aio_inprogress_ != 0)
     g_aio_task[0]->cancel_aio(this->handle_);
-  if (result == ndk::aio_canceled)
+  if (result == ndk::AIO_CANCELED)
   {
     this->cancel_pendding_ = 0;
     delete this;
-  }else if (result == ndk::aio_notcanceled)
+  }else if (result == ndk::AIO_NOTCANCELED)
   {
     this->cancel_pendding_ = 1;
   }else

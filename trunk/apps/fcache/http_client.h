@@ -52,7 +52,7 @@ public:
 
   int handle_data();
 
-  int response_client(int , uint64_t, const std::string &);
+  int response_client(int , int64_t, int64_t, const std::string &);
 
   int show_status();
 protected:

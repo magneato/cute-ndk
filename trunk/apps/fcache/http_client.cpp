@@ -87,12 +87,6 @@ int http_client::open(void *)
 }
 int http_client::handle_input(ndk::ndk_handle )
 {
-  if (this->recv_msg_ok_)
-  {
-    net_log->error("handle %d had recv a msg!",
-                   this->peer().get_handle());
-    return -1;
-  }
   int result = this->peer().recv(this->recv_buff_->wr_ptr(),
                                  this->recv_buff_->size() -
                                  this->recv_buff_->length());
@@ -107,6 +101,12 @@ int http_client::handle_input(ndk::ndk_handle )
   }else if (result == 0)
   {
     net_log->debug("socket %d closed by peer!", 
+                   this->peer().get_handle());
+    return -1;
+  }
+  if (this->recv_msg_ok_)
+  {
+    net_log->error("handle %d had recv a msg!",
                    this->peer().get_handle());
     return -1;
   }
@@ -149,40 +149,42 @@ int http_client::handle_data()
   char *uri_end_p = ::strstr(uri_begin_p, " HTTP/1.");
   if (uri_end_p == 0)
   {
-    this->response_client(400, 0, "Not found 'HTTP/1.x'");
+    this->response_client(400, 0, 0, "Not found 'HTTP/1.x'");
     return -1;
   }
   char *host_p = ::strstr(uri_end_p, "Host: ");
   if (host_p == 0)
   {
-    this->response_client(400, 0, "Not found 'Host' header");
+    this->response_client(400, 0, 0, "Not found 'Host' header");
     return -1;
   }
   char *host_p_end = ::strstr(host_p + sizeof("Host:"), "\r\n");
   if (host_p_end == 0)
   {
-    this->response_client(400, 0, "Not found '\\r\\n' after 'Host'");
+    this->response_client(400, 0, 0, "Not found '\\r\\n' after 'Host'");
     return -1;
   }
   std::string host(host_p + sizeof("Host:"),
                    host_p_end - (host_p + sizeof("Host:")));
 
-  char *range_p = ::strstr(uri_end_p, "Range: ");
+  char *range_p = ::strstr(uri_end_p, "Range: bytes=");
   int64_t start_pos = 0;
-  int64_t end_pos = 0;
+  int64_t end_pos = -1;
+  int partial = 0;
   if (range_p != 0)
   {
-    char *range_p_end = ::strstr(range_p + sizeof("Range:"), "\r\n");
+    partial = 1;
+    char *range_p_end = ::strstr(range_p + sizeof("Range: bytes=") - 1, "\r\n");
     if (range_p_end == 0)
     {
-      this->response_client(400, 0, "Not found '\\r\\n' after 'Range'");
+      this->response_client(400, 0, 0, "Not found '\\r\\n' after 'Range'");
       return -1;
     }
     char *endptr = 0;
-    if (*(range_p + sizeof("Range:")) != '-')
+    if (*(range_p + sizeof("Range: bytes=") - 1) != '-')
     {
-      start_pos = ::strtoll(range_p + sizeof("Range:"), &endptr, 10);
-      char *sep = ::strchr(range_p + sizeof("Range:") + 1, '-');
+      start_pos = ::strtoll(range_p + sizeof("Range: bytes=") - 1, &endptr, 10);
+      char *sep = ::strchr(range_p + sizeof("Range: bytes=") - 1 + 1, '-');
       if (sep != 0 && isdigit(*(sep + 1)))  // 123456-123
       {
         end_pos = ::strtoll(sep + 1, &endptr, 10);
@@ -201,36 +203,41 @@ int http_client::handle_data()
   {
     ndk::ndk_handle fd = ::open(filename.c_str(), O_RDONLY);
     struct stat st;
-    if (fd != NDK_INVALID_HANDLE && ::fstat(fd, &st) != -1)
+    if (fd != NDK_INVALID_HANDLE 
+        && ::fstat(fd, &st) != -1 
+        && ((st.st_mode & S_IFMT) == S_IFREG))
     {
       fileinfo = fileinfo_ptr(new file_info());
       fileinfo->length(st.st_size);
       fileinfo->url(url);
+      fileinfo->filename(filename);
       fileinfo->mtime(st.st_mtime);
+      file_manager::instance()->insert(fileinfo);
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
     }else
     {
+      if (fd != NDK_INVALID_HANDLE) ::close(fd);
       if (errno == ENOENT)
-        this->response_client(404, 0, strerror(errno));
+        this->response_client(404, 0, 0, strerror(errno));
       else
-        this->response_client(503, 0, "-");
+        this->response_client(503, 0, 0, "-");
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
       return -1;
     }
   }
 
   this->recv_msg_ok_ = 1;
-  this->recv_buff_->release();
-  this->recv_buff_ = 0;
 
   if (end_pos == -1)
     end_pos = fileinfo->length() - 1;
+
+  int64_t content_length = end_pos - start_pos + 1;
 
   int result = 0;
   transfer_agent *trans_agent = 0;
   if (fileinfo->length() < 1024*1024*16)
   {
-    trans_agent = new mem_cache_transfer(0, end_pos - start_pos + 1);
+    trans_agent = new mem_cache_transfer(start_pos, content_length);
     result = trans_agent->open(fileinfo);
     if (result != 0)
     {
@@ -243,15 +250,18 @@ int http_client::handle_data()
   // direct read file from disk.
   if (trans_agent == 0)
   {
-    trans_agent = new serial_file_transfer(0, fileinfo->length());
+    trans_agent = new serial_file_transfer(start_pos, content_length);
     if (trans_agent->open(fileinfo) != 0)
     {
       delete trans_agent;
-      this->response_client(503, 0, "-");
+      this->response_client(503, 0, 0, "-");
       return -1;
     }
   }
-  result = this->response_client(200, fileinfo->length(), "HIT");
+  if (partial == 1)
+    result = this->response_client(206, start_pos, end_pos, "HIT");
+  else
+    result = this->response_client(200, start_pos, end_pos, "HIT");
   if (result != -1)
   {
     this->session_id_ = http_sessionmgr::instance()->alloc_sessionid();
@@ -262,12 +272,15 @@ int http_client::handle_data()
       new dispatch_data_task::dispatch_job;
     job->session_id = this->session_id_;
     job->transfer_agent_ = trans_agent;
+    job->client = this;
+    job->content_length_ = content_length;
     g_dispatch_data_task[0].push_job(job);
   }
   return result;
 }
 int http_client::response_client(int status,
-                                 uint64_t content_length,
+                                 int64_t start_pos,
+                                 int64_t end_pos,
                                  const std::string &desc)
 {
   std::ostringstream os;
@@ -300,8 +313,18 @@ int http_client::response_client(int status,
   if (status == 200 || status == 206)
   {
     os << "Accept-Ranges: bytes\r\n"
-      << "Connection: keep-alive\r\n"
-      << "Content-Length: " << content_length << "\r\n";
+      << "Connection: close\r\n"
+      << "Content-Length: " << end_pos - start_pos + 1 << "\r\n";
+    if (status == 206)
+    {
+      os << "Content-Range: bytes " 
+        << start_pos 
+        << "-" 
+        << end_pos 
+        << "/" 
+        << end_pos - start_pos + 1 
+        << "\r\n";
+    }
   }else
   {
     os << "Connection: close\r\n";

@@ -6,6 +6,12 @@ static ndk::logger *dispatch_log = ndk::log_manager::instance()->get_logger("roo
 
 #define TIME_PIECE    50
 
+extern int g_bandwidth;
+
+int dispatch_data_task::open()
+{
+  return this->activate(ndk::thread::thr_join, 1);
+}
 int dispatch_data_task::svc()
 {
   while (1)
@@ -34,7 +40,6 @@ int dispatch_data_task::out_of_bandwidth(dispatch_job *job,
 }
 void dispatch_data_task::push_job(dispatch_job *job)
 {
-  assert(job);
   ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
   this->dispatch_queue_.push_back(job);
   job->last_check_bandwidth_time.update();
@@ -48,6 +53,7 @@ void dispatch_data_task::delete_client(int sid)
   {
     if ((*itor)->session_id == sid)
     {
+      (*itor)->transfer_agent_->close();
       delete *itor;
       this->dispatch_queue_.erase(itor);
       return ;
@@ -75,16 +81,23 @@ void dispatch_data_task::dispatch_data(void)
       }else if (this->out_of_bandwidth(job, this->poll_before_))
         goto LOOP_TAIL;
 
-      job->bytes_to_send_per_timep += ((2048)*1024/(1000/TIME_PIECE))/8;
+      job->bytes_to_send_per_timep += (g_bandwidth*1024/(1000/TIME_PIECE))/8;
 
       for (; job->bytes_to_send_per_timep > 0; )
       {
         int transfer_bytes = 0;
-        result = job->transfer_agent_->transfer_data(job->bytes_to_send_per_timep,
+        result = job->transfer_agent_->transfer_data(job->client->get_handle(),
+                                                     job->bytes_to_send_per_timep,
                                                      transfer_bytes);
         // 
         job->bytes_to_send_per_timep -= transfer_bytes;
-        //job->transfer_bytes_ += transfer_bytes;
+        job->transfer_bytes_ += transfer_bytes;
+        if (job->transfer_bytes_ == job->content_length_)
+        {
+          result = -1;
+          dispatch_log->rinfo("transfer data end! total %lld bytes",
+                              job->transfer_bytes_);
+        }
         if (result < 0)
         {
           job->stopped = 1;
