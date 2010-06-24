@@ -32,8 +32,6 @@ public:
     bytes_to_send_(4096),
     content_length_(0),
     timer_id_(-1),
-    file_handle_(NDK_INVALID_HANDLE),
-    cache_obj_(0),
     recv_buff_(0)
   {  }
 
@@ -52,7 +50,9 @@ public:
 
   int handle_data();
 
-  int response_client(int , int64_t, int64_t, const std::string &);
+  int response_client(int , int64_t, int64_t, 
+                      const std::string &,
+                      const std::string &);
 
   int show_status();
 protected:
@@ -63,8 +63,6 @@ protected:
   int bytes_to_send_;
   int content_length_;
   int timer_id_;
-  ndk::ndk_handle file_handle_;
-  ndk::cache_object* cache_obj_;
   ndk::time_value begin_time_;
   ndk::message_block *recv_buff_;
   ndk::inet_addr remote_addr_;

@@ -38,7 +38,6 @@ public:
   {
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
     ++this->size_;
-    printf("malloc size = %d\n", this->size_);
     return new char[this->block_size()];
     if (this->buffer_list_ == 0)
     {
@@ -58,7 +57,6 @@ public:
   {
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
     --this->size_;
-    printf("free %p size = %d\n", p, this->size_);
     delete []p;
     return ;
     assert(p != 0);

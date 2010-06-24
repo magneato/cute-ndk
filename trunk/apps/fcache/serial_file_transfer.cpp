@@ -11,10 +11,11 @@ extern buffer_manager *file_io_cache_mgr;
 #define ONCE_TRANSFER_PACKET_SIZE   4096
 
 static int new_count = 0;
+static ndk::thread_mutex c_mtx;
 serial_file_transfer::serial_file_transfer(uint64_t start_pos,
                                            uint64_t content_length)
   : handle_(NDK_INVALID_HANDLE),
-  aio_inprogress_(0),
+  aio_id_(-1),
   eof_(0),
   file_io_error_(0),
   cancel_pendding_(0),
@@ -28,13 +29,15 @@ serial_file_transfer::serial_file_transfer(uint64_t start_pos,
   buffer_(0),
   reserve_buffer_(0)
 {
+  ndk::guard<ndk::thread_mutex> g(c_mtx);
   ++new_count;
 }
 
 serial_file_transfer::~serial_file_transfer()
 {
+  ndk::guard<ndk::thread_mutex> g(c_mtx);
   --new_count;
-  printf("%p %p c = %d\n", this->buffer_, this->reserve_buffer_, new_count);
+  file_io_log->fatal("%p %p c = %d", this->buffer_, this->reserve_buffer_, new_count);
   if (this->buffer_)
   {
     file_io_cache_mgr->free(this->buffer_);
@@ -72,28 +75,31 @@ int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
   }
   this->fileinfo_->incr_fd_ref();
 
-  this->start_read();
+  // high priority.
+  ndk::guard<ndk::thread_mutex> g(this->buffer_mtx_);
+  this->start_read(0, 5);
 
   return 0;
 }
-int serial_file_transfer::start_read()
+int serial_file_transfer::start_read(int fd_prio, int io_prio)
 {
-  if (this->aio_inprogress_ || this->reserve_buffer_ != 0)
-    return -1;
-  file_io_log->debug("start read offset = %lld",
-                     this->offset_);
-
   this->reserve_buffer_ = (char *)file_io_cache_mgr->malloc();
   assert(this->reserve_buffer_ != 0);
-  if (g_aio_task[0]->start_aio(this->handle_,
-                               file_io_cache_mgr->block_size(),
-                               this->offset_,
-                               this->reserve_buffer_,
-                               this,
-                               ndk::AIO_READ,
-                               0) != 0)
+  size_t read_bytes = file_io_cache_mgr->block_size();
+  if (uint64_t(read_bytes) > (this->content_length_ - this->transfer_bytes_))
+    read_bytes = this->content_length_ - this->transfer_bytes_;
+  int result = g_aio_task[0]->start_aio(this->handle_,
+                                        &this->aio_id_,
+                                        read_bytes,
+                                        this->offset_,
+                                        this->reserve_buffer_,
+                                        this,
+                                        ndk::AIO_READ,
+                                        fd_prio,
+                                        io_prio);
+  if (result == -1)
   {
-    file_io_log->warning("start aio failed! [h = %d][file: %s]",
+    file_io_log->debug("start aio failed! [h = %d][file: %s]",
                          this->handle_,
                          this->fileinfo_->filename().c_str());
     file_io_cache_mgr->free(this->reserve_buffer_);
@@ -101,7 +107,7 @@ int serial_file_transfer::start_read()
     this->reserve_buffer_size_ = 0;
     return -1;
   }
-  ++this->aio_inprogress_;
+  file_io_log->debug("start aio id = %d", this->aio_id_);
   return 0;
 }
 int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
@@ -112,11 +118,15 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
   if (this->buffer_ == 0) 
   {
     ndk::guard<ndk::thread_mutex> g(this->buffer_mtx_);
-    if (this->aio_inprogress_) return 0;
-    // the first calling.
-    if (this->reserve_buffer_ == 0)
+    if (this->aio_id_ != -1) 
     {
-      this->start_read();
+      file_io_log->debug("reserve buffer does not return aio_id = %d", this->aio_id_);
+      return 0;
+    }
+    if (this->reserve_buffer_ == 0) // the first read request.
+    {
+      // priority is higher, as <buffer_> and <reserve_buffer_> are empty.
+      this->start_read(0, 5);
       return 0; //
     }else
     {
@@ -130,6 +140,7 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
     }
   }
   
+  // transfer data.
   int result = 0;
   int bytes_to_send = 0;
   while (transfer_bytes < max_size 
@@ -137,6 +148,7 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
          && this->transfer_bytes_ < this->content_length_)
   {
     bytes_to_send = this->buffer_size_ - this->send_bytes_;
+
     result = ndk::send(handle,
                        this->buffer_ + this->send_bytes_, 
                        bytes_to_send > ONCE_TRANSFER_PACKET_SIZE ? 
@@ -150,7 +162,10 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
     }else if (errno != EWOULDBLOCK)
       return -1;
     else 
+    {
+      file_io_log->debug("errno = wouldblockd");
       return 0;
+    }
   }
   if (this->transfer_bytes_ == this->content_length_)
     return transfer_bytes;
@@ -159,6 +174,7 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
   if (this->send_bytes_ >= this->buffer_size_/2)
   {
     if (this->send_bytes_ == this->buffer_size_)
+      // read end of a buffer block.
     {
       file_io_cache_mgr->free(this->buffer_);
       this->buffer_       = 0;
@@ -170,18 +186,23 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
     {
       if (this->send_bytes_ == this->buffer_size_)
         return -1;
-    }else if (this->aio_inprogress_ == 0 || this->reserve_buffer_ == 0)
-      this->start_read();
+    }else if (this->aio_id_ == -1 && ((this->offset_ - this->start_pos_) 
+                                      != this->content_length_)
+              && this->reserve_buffer_ == 0)
+    {
+      this->start_read(0, 0);
+    }
   }
   return transfer_bytes;
 }
 void serial_file_transfer::handle_aio_read(const ndk::aio_opt_t *aio_result)
 {
   ndk::guard<ndk::thread_mutex> g(this->buffer_mtx_);
-  --this->aio_inprogress_;
+  assert(aio_result->id() == this->aio_id_);
+  this->aio_id_ = -1;
   if (this->cancel_pendding_ == 1)
   {
-    this->close_i();
+    //this->close_i();
     return ;
   }
   if (aio_result->errcode() == 0)
@@ -216,15 +237,18 @@ int serial_file_transfer::close()
 int serial_file_transfer::close_i()
 {
   int result = ndk::AIO_CANCELED;
-  if (this->aio_inprogress_ != 0)
-    g_aio_task[0]->cancel_aio(this->handle_);
+  if (this->aio_id_ != -1)
+    result = g_aio_task[0]->cancel_aio(this->handle_, this->aio_id_);
   if (result == ndk::AIO_CANCELED)
   {
+    file_io_log->debug("cancel id %d ok", this->aio_id_);
     this->cancel_pendding_ = 0;
-    delete this;
+    return 0;
   }else if (result == ndk::AIO_NOTCANCELED)
   {
+    file_io_log->debug("cancel id %d failed", this->aio_id_);
     this->cancel_pendding_ = 1;
+    return -1;
   }else
     assert(0);
   return 0;
