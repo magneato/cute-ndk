@@ -37,13 +37,15 @@ public:
 
   virtual int close();
 protected:
-  int start_read();
+  int start_read(int fd_prio, int io_prio);
 
   int close_i();
 protected:
   ndk::ndk_handle handle_;
+  
+  int aio_id_;
 
-  volatile int aio_inprogress_;
+  //volatile int aio_inprogress_;
   volatile int eof_;
   volatile int file_io_error_;
   volatile int cancel_pendding_;

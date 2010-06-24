@@ -19,7 +19,8 @@ extern std::string g_doc_root;
 extern dispatch_data_task *g_dispatch_data_task;
 extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
 
-static ndk::logger*net_log = ndk::log_manager::instance()->get_logger("root.net");
+static ndk::logger* net_log = ndk::log_manager::instance()->get_logger("root.net");
+static ndk::logger* access_log = ndk::log_manager::instance()->get_logger("root.access");
 
 http_client::~http_client()
 {
@@ -38,18 +39,6 @@ http_client::~http_client()
     this->recv_buff_ = 0;
   }
 
-  if (this->file_handle_ != NDK_INVALID_HANDLE)
-  {
-    ::close(this->file_handle_);
-    this->file_handle_ = NDK_INVALID_HANDLE;
-  }
-  if (this->cache_obj_)
-  {
-    g_cache_manager->release(this->cache_obj_);
-    net_log->rinfo("%p refer count = %d", 
-                   this->cache_obj_,
-                   this->cache_obj_->refcount());
-  }
   if (this->content_length_ > 0 && this->send_bytes_ == this->content_length_)
   {
     ndk::time_value diff = ndk::time_value::gettimeofday() - this->begin_time_;
@@ -57,7 +46,6 @@ http_client::~http_client()
                    this->content_length_,
                    diff.msec());
   }
-  this->cache_obj_ = 0;
 }
 int http_client::open(void *)
 {
@@ -149,19 +137,19 @@ int http_client::handle_data()
   char *uri_end_p = ::strstr(uri_begin_p, " HTTP/1.");
   if (uri_end_p == 0)
   {
-    this->response_client(400, 0, 0, "Not found 'HTTP/1.x'");
+    this->response_client(400, 0, 0, "-", "Not found 'HTTP/1.x'");
     return -1;
   }
   char *host_p = ::strstr(uri_end_p, "Host: ");
   if (host_p == 0)
   {
-    this->response_client(400, 0, 0, "Not found 'Host' header");
+    this->response_client(400, 0, 0, "-", "Not found 'Host' header");
     return -1;
   }
   char *host_p_end = ::strstr(host_p + sizeof("Host:"), "\r\n");
   if (host_p_end == 0)
   {
-    this->response_client(400, 0, 0, "Not found '\\r\\n' after 'Host'");
+    this->response_client(400, 0, 0, "-", "Not found '\\r\\n' after 'Host'");
     return -1;
   }
   std::string host(host_p + sizeof("Host:"),
@@ -177,19 +165,25 @@ int http_client::handle_data()
     char *range_p_end = ::strstr(range_p + sizeof("Range: bytes=") - 1, "\r\n");
     if (range_p_end == 0)
     {
-      this->response_client(400, 0, 0, "Not found '\\r\\n' after 'Range'");
+      this->response_client(400, 0, 0, "-", "Not found '\\r\\n' after 'Range'");
       return -1;
     }
     char *endptr = 0;
-    if (*(range_p + sizeof("Range: bytes=") - 1) != '-')
+    char *dig_pos = range_p + sizeof("Range: bytes=") - 1;
+    if (*dig_pos != '-')
     {
-      start_pos = ::strtoll(range_p + sizeof("Range: bytes=") - 1, &endptr, 10);
-      char *sep = ::strchr(range_p + sizeof("Range: bytes=") - 1 + 1, '-');
+      start_pos = ::strtoll(dig_pos, &endptr, 10);
+      char *sep = ::strchr(dig_pos + 1, '-');
       if (sep != 0 && isdigit(*(sep + 1)))  // 123456-123
       {
         end_pos = ::strtoll(sep + 1, &endptr, 10);
         if (end_pos == 0) end_pos = -1;
       }
+    }else
+    {
+      start_pos = 0;
+      if (isdigit(*(dig_pos + 1)))
+        end_pos = ::strtoll(dig_pos + 1, &endptr, 10);
     }
   }
 
@@ -218,9 +212,9 @@ int http_client::handle_data()
     {
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
       if (errno == ENOENT)
-        this->response_client(404, 0, 0, strerror(errno));
+        this->response_client(404, 0, 0, uri, strerror(errno));
       else
-        this->response_client(503, 0, 0, "-");
+        this->response_client(503, 0, 0, uri, strerror(errno));
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
       return -1;
     }
@@ -254,14 +248,14 @@ int http_client::handle_data()
     if (trans_agent->open(fileinfo) != 0)
     {
       delete trans_agent;
-      this->response_client(503, 0, 0, "-");
+      this->response_client(503, 0, 0, uri, strerror(errno));
       return -1;
     }
   }
   if (partial == 1)
-    result = this->response_client(206, start_pos, end_pos, "HIT");
+    result = this->response_client(206, start_pos, end_pos, uri, "HIT");
   else
-    result = this->response_client(200, start_pos, end_pos, "HIT");
+    result = this->response_client(200, start_pos, end_pos, uri, "HIT");
   if (result != -1)
   {
     this->session_id_ = http_sessionmgr::instance()->alloc_sessionid();
@@ -275,12 +269,17 @@ int http_client::handle_data()
     job->client = this;
     job->content_length_ = content_length;
     g_dispatch_data_task[0].push_job(job);
+    net_log->debug("insert sessionid %d", this->session_id_);
+  }else if (trans_agent) 
+  {
+    delete trans_agent;
   }
   return result;
 }
 int http_client::response_client(int status,
                                  int64_t start_pos,
                                  int64_t end_pos,
+                                 const std::string &uri,
                                  const std::string &desc)
 {
   std::ostringstream os;
@@ -331,6 +330,25 @@ int http_client::response_client(int status,
   }
   os << "\r\n";
   int result = this->peer().send(os.str().c_str(), os.str().length());
+  char st[32] = {0};
+  ndk::time_value tv = this->begin_time_;
+  tv.sec(0);
+  ndk::date_time(this->begin_time_.sec()).to_str(st, sizeof(st));
+  char addr[32] = {0};  // 
+  this->remote_addr_.addr_to_string(addr, sizeof(addr));
+  char log[1024] = {0};
+  int len = ::snprintf(log, sizeof(log),
+                       "[%s.%03lu] %s %s %s %d \"%s\"\n",
+                       st,
+                       tv.msec(),
+                       addr,
+                       "GET",
+                       uri.c_str(),
+                       status,
+                       desc.c_str());
+
+  access_log->puts(log, len);
+
   return result < 0 ? -1 : 0;
 }
 int http_client::show_status()

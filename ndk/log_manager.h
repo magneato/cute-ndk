@@ -104,7 +104,8 @@ namespace ndk
       : check_config_interval_(10),
       max_len_of_one_record_(512),
       log_record_(0),
-      root_node_(0)
+      root_node_(0),
+      ini_obj_(0)
     { }
 
     ~log_manager()

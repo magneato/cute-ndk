@@ -32,7 +32,9 @@ public:
       bytes_to_send_per_timep(0),
       content_length_(0),
       transfer_bytes_(0),
-      client(0)
+      client(0),
+      transfer_agent_(0),
+      last_check_bandwidth_time(0)
     { }
 
     ~dispatch_job()

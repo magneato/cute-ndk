@@ -51,9 +51,13 @@ static void guard_log(const char *format, ...)
   vfprintf(fp, format, argptr);
   fclose(fp);
 }
+void dump(int )
+{
+  g_aio_task[0]->dump();
+}
 void sig_handle()
 {
-  signal(SIGHUP,  SIG_IGN);
+  signal(SIGHUP,  dump);
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT,  SIG_IGN);
 }

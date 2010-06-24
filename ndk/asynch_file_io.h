@@ -68,25 +68,17 @@ namespace ndk
   {
     friend class asynch_file_io;
   public:
-    aio_opt_t()
-      : handle_(NDK_INVALID_HANDLE),
-      opcode_(-1),
-      errcode_(0),
-      priority_(0),
-      i_nbytes_(0),
-      o_nbytes_(0),
-      offset_(0),
-      buffer_(0),
-      aio_handler_(0),
-      next_(0),
-      ptr_(0)
-    { }
+    aio_opt_t() { reset();ndk::guard<ndk::thread_mutex> g(aio_opt_t::count_mtx); aio_opt_t::count++;}
+    ~aio_opt_t() { ndk::guard<ndk::thread_mutex> g(aio_opt_t::count_mtx); aio_opt_t::count--; }
 
     inline ndk::ndk_handle handle() const
     { return this->handle_; }
 
-    inline int priority() const
-    { return this->priority_; }
+    inline int fd_prio() const
+    { return this->fd_prio_; }
+
+    inline int io_prio() const
+    { return this->io_prio_; }
 
     inline size_t bytes_completed() const
     { return this->o_nbytes_; }
@@ -99,34 +91,32 @@ namespace ndk
 
     inline char *buffer() const
     { return this->buffer_; }
+
+    inline int id() const
+    { return this->id_; }
+
   protected:
-    void reset()
-    {
-      this->handle_   = NDK_INVALID_HANDLE;
-      this->opcode_   = -1;
-      this->errcode_  =  0;
-      this->priority_ = 0;
-      this->i_nbytes_ = 0;
-      this->o_nbytes_ = 0;
-      this->offset_   = 0;
-      this->buffer_   = 0;
-      this->aio_handler_ = 0;
-      this->next_ = 0;
-      this->ptr_  = 0;
-    }
+    void reset();
+
   protected:
+    static int count;
+    static ndk::thread_mutex count_mtx;
     ndk::ndk_handle handle_;
     int opcode_;
     int errcode_;
-    int priority_;
+    int fd_prio_;
+    int io_prio_;
+    int id_;
     size_t i_nbytes_;
     size_t o_nbytes_;
     uint64_t offset_;
     char *buffer_;
     asynch_handler *aio_handler_;
 
+    aio_opt_t *prev_;
     aio_opt_t *next_;
     aio_opt_t *ptr_;
+    aio_opt_t *header_; // single link list.
   };
   /**
    * @class asynch_file_io
@@ -137,8 +127,11 @@ namespace ndk
   {
   public:
     asynch_file_io(size_t max_queue_size)
-      : max_request_queue_size_(max_queue_size),
+      : id_itor_(0),
+      fd_pool_size_(0),
+      max_request_queue_size_(max_queue_size),
       queue_list_size_(0),
+      fd_pool_(0),
       queue_list_(0),
       queue_list_mtx_(),
       not_empty_cond_(queue_list_mtx_),
@@ -148,19 +141,23 @@ namespace ndk
       free_list_(0)
     { }
 
-    inline int open(size_t thr_num)
-    {
-      return this->activate(ndk::thread::thr_join, thr_num);
-    }
+    int open(size_t thr_num);
 
-    //
+    /**
+     * post a aio request.
+     * Return -1: is error that current requests are too many.
+     *
+     *         0: is ok.
+     */
     int start_aio(ndk::ndk_handle handle,
+                  int *aio_id,
                   size_t nbytes,
                   uint64_t offset,
                   char *buff,
                   asynch_handler *handler,
                   int optcode,
-                  int priority);
+                  int fd_priority,
+                  int io_priority);
 
     /**
      * cancel an asynchronous I/O request
@@ -168,9 +165,16 @@ namespace ndk
      *        AIO_NOTCANCELED at least one of the requested operation(s) 
      *        cannot be canceled because it is in progress.
      */
-    int cancel_aio(ndk::ndk_handle handle);
+    int cancel_aio(ndk::ndk_handle handle, int id);
+
+    // for debug
+#ifdef NDK_DUMP
+    void dump();
+#endif
   protected:
     virtual int svc();
+
+    aio_opt_t *pop_some_request(aio_opt_t *pop_list, int num);
 
     void handle_aio_requests(aio_opt_t *running_list);
 
@@ -186,6 +190,7 @@ namespace ndk
 
     aio_opt_t *alloc_aio_opt_i(aio_opt_t *&aio_list)
     {
+      return new aio_opt_t();
       if (aio_list == 0) aio_list = new aio_opt_t();
       aio_opt_t *aioopt = aio_list;
       aio_list = aio_list->next_;
@@ -197,16 +202,20 @@ namespace ndk
     inline void free_aio_opt(aio_opt_t *p)
     {
       ndk::guard<ndk::thread_mutex> g(this->free_list_mtx_);
-      int c = this->free_aio_opt_i(p, this->free_list_);
-      this->queue_list_size_ -= c;
+      this->free_aio_opt_i(p, this->free_list_);
+      --this->queue_list_size_;
     }
+    inline void free_aio_opt_n(aio_opt_t *p);
 
     //
-    int free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list);
+    void free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list);
   protected:
+    int id_itor_;
+    int fd_pool_size_;
     size_t max_request_queue_size_;
     size_t queue_list_size_;
 
+    aio_opt_t **fd_pool_;  // arrary 
     aio_opt_t *queue_list_;  // single link
     ndk::thread_mutex queue_list_mtx_;
     ndk::condition<ndk::thread_mutex> not_empty_cond_;

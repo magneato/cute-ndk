@@ -9,6 +9,7 @@
 
 static ndk::logger *memcache_log = ndk::log_manager::instance()->get_logger("root.memcache");
 
+static int new_count = 0;
 extern ndk::asynch_file_io **g_aio_task;
 extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
 
@@ -31,9 +32,12 @@ mem_cache_transfer::mem_cache_transfer(uint64_t start_pos,
   transfer_bytes_(0),
   cache_obj_(0)
 {
+  ++new_count;
 }
 mem_cache_transfer::~mem_cache_transfer()
 {
+  --new_count;
+  memcache_log->fatal("c = %d", new_count);
   if (this->cache_obj_)
   {
     g_cache_manager->release(this->cache_obj_);
