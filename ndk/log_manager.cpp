@@ -331,16 +331,41 @@ module_entry *log_manager::get_module_cfg_entry(const char *mname)
 
   // 2. log ouput
   std::deque<std::string> ot = this->get_log_output(mname);
+  std::deque<std::string> neg;
+  std::deque<std::string>::iterator ot_itor;
+  for (ot_itor = ot.begin(); ot_itor != ot.end(); ++ot_itor)
+  {
+    if (!ot_itor->empty() && (*ot_itor)[0] == '~')
+      neg.push_back(*ot_itor);
+  }
   entry->output_list_ = ot;
   if (::strstr(mname, ".") != 0)
   {
     ot = this->get_parent_output(mname);
+    std::deque<std::string>::iterator pos;
+    for (pos = ot.begin(); pos != ot.end();)
+    {
+      if (!pos->empty() && (*pos)[0] == '~')
+        pos = ot.erase(pos);
+      else
+        ++pos;
+    }
     std::copy(ot.begin(), ot.end(), std::back_inserter(entry->output_list_));
   }
   std::sort(entry->output_list_.begin(), entry->output_list_.end());
   entry->output_list_.assign(entry->output_list_.begin(),
                              std::unique(entry->output_list_.begin(), 
                                          entry->output_list_.end()));
+  std::deque<std::string>::iterator neg_itor;
+  for (neg_itor = neg.begin(); neg_itor != neg.end(); ++neg_itor)
+  {
+    std::string s = neg_itor->substr(1);
+    if (s.empty()) continue;
+    std::deque<std::string>::iterator pos = std::find(entry->output_list_.begin(),
+                                                      entry->output_list_.end(),
+                                                      s);
+    entry->output_list_.erase(pos);
+  }
 
   // 3. max length of one log record. 
   char *max_len_of_one_record = this->get_log_max_len_of_one_record(mname);
