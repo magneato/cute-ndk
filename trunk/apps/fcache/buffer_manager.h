@@ -66,6 +66,9 @@ public:
     this->buffer_list_ = item;
   }
 
+  inline size_t malloc_bytes()
+  { return this->size_ * this->block_size_; }
+
   inline size_t block_size()
   { return this->block_size_; }
 protected:

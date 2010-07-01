@@ -9,7 +9,8 @@
 
 static ndk::logger *memcache_log = ndk::log_manager::instance()->get_logger("root.memcache");
 
-static int new_count = 0;
+extern int g_cache_mem_used;
+extern int64_t g_hit_cache;
 extern ndk::asynch_file_io **g_aio_task;
 extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
 
@@ -18,6 +19,7 @@ class observer : public ndk::cache_object_observer
 public:
   virtual int drop(ndk::cache_object *cobj)
   {
+    g_cache_mem_used -= cobj->size();
     ::munmap(cobj->data(), cobj->size());
     return 0;
   }
@@ -32,12 +34,9 @@ mem_cache_transfer::mem_cache_transfer(uint64_t start_pos,
   transfer_bytes_(0),
   cache_obj_(0)
 {
-  ++new_count;
 }
 mem_cache_transfer::~mem_cache_transfer()
 {
-  --new_count;
-  memcache_log->fatal("c = %d", new_count);
   if (this->cache_obj_)
   {
     g_cache_manager->release(this->cache_obj_);
@@ -79,6 +78,7 @@ int mem_cache_transfer::open(const fileinfo_ptr &finfo)
                             this->cache_obj_->refcount(),
                             this->cache_obj_);
         assert(this->cache_obj_ != 0);  // for debug
+        g_cache_mem_used += finfo->length();
         // cache new file ok.
       }
     }else 
@@ -86,6 +86,9 @@ int mem_cache_transfer::open(const fileinfo_ptr &finfo)
       memcache_log->error("open failed! [%s]", strerror(errno));
       return -1;
     }
+  }else // end of `if (this->cache_obj_ == 0)'
+  {
+    ++g_hit_cache;
   }
   return 0;
 }
@@ -111,14 +114,17 @@ int mem_cache_transfer::transfer_data(ndk::ndk_handle handle,
       this->transfer_bytes_ += result;  // statistic total flux.
       transfer_bytes        += result;  // statistic flux in once calling.
     }else if (errno != EWOULDBLOCK)
+    {
+      memcache_log->error("trnasfer data failed! [h = %d][%s]",
+                          handle,
+                          strerror(errno));
       return -1;
-    else 
+    }else 
       return 0;
   }
   return transfer_bytes;
 }
 int mem_cache_transfer::close()
 {
-  delete this;
   return 0;
 }

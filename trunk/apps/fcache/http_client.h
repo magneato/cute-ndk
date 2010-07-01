@@ -23,15 +23,25 @@
  */
 class http_client : public ndk::svc_handler
 {
+  enum
+  {
+    HTTP_UNKNOW, 
+    HTTP_GET,  
+    HTTP_HEAD  
+  };
 public:
   http_client()
     : session_id_(-1),
     dispatch_data_task_idx_(0),
     recv_msg_ok_(0),
-    send_bytes_(0),
+    transfer_bytes_(0),
     bytes_to_send_(4096),
     content_length_(0),
     timer_id_(-1),
+    http_method_(HTTP_UNKNOW),
+    response_code_(0),
+    session_desc_("~"),
+    uri_("~"),
     recv_buff_(0)
   {  }
 
@@ -50,19 +60,30 @@ public:
 
   int handle_data();
 
-  int response_client(int , int64_t, int64_t, 
-                      const std::string &,
-                      const std::string &);
+  int response_client(int , int64_t = 0, int64_t = 0); 
+
+  void transfer_bytes(int64_t transfer_bytes)
+  { this->transfer_bytes_ = transfer_bytes; }
+
+  void transfer_error(const std::string &desc)
+  { this->session_desc_ = desc; }
 
   int show_status();
 protected:
   int session_id_;
   int dispatch_data_task_idx_;
   int recv_msg_ok_;
-  int send_bytes_;
+  int64_t transfer_bytes_;
   int bytes_to_send_;
-  int content_length_;
+  int64_t content_length_;
   int timer_id_;
+
+  int http_method_;
+  int response_code_;
+  std::string session_desc_;
+
+  std::string uri_;
+
   ndk::time_value begin_time_;
   ndk::message_block *recv_buff_;
   ndk::inet_addr remote_addr_;
