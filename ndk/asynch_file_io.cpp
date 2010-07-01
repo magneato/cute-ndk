@@ -2,8 +2,6 @@
 
 namespace ndk
 {
-int aio_opt_t::count = 0;
-ndk::thread_mutex aio_opt_t::count_mtx;
 void aio_opt_t::reset()
 {
   this->handle_       = NDK_INVALID_HANDLE;
@@ -53,7 +51,7 @@ int asynch_file_io::start_aio(ndk::ndk_handle handle,
   assert(aio_id != 0);
 
   aio_opt_t *aioopt = this->alloc_aio_opt();
-  if (aioopt == 0) return -1;
+  if (aioopt == NULL) return -1;
 
   // guard
   ndk::guard<ndk::thread_mutex> g(this->queue_list_mtx_);
@@ -109,18 +107,24 @@ int asynch_file_io::start_aio(ndk::ndk_handle handle,
         itor->next_ = top_node;
       }
     } // end of `if (this->queue_list_ == 0)'
-  }else // link to sub queue
+  }else  // end of `if (this->fd_pool_[handle] == 0)'
+    // link to sub queue
   {
+    assert(this->queue_list_ != 0);
     top_node = this->fd_pool_[handle];
     if (aioopt->io_prio_ > top_node->io_prio_)
     {
       // replace old top node.
-      aioopt->fd_prio_ = top_node->fd_prio_; // in order to keep fd order.
+      aioopt->fd_prio_ = top_node->fd_prio_; // in order to keep fd sequence.
       this->fd_pool_[handle] = aioopt;
       aioopt->header_ = top_node;
 
+      // reset header.
+      if (this->queue_list_ == top_node)
+        this->queue_list_ = aioopt;
+
       // insert new node.
-      aioopt->next_   = top_node->next_;
+      aioopt->next_ = top_node->next_;
       if (top_node->next_)
         top_node->next_->prev_ = aioopt;
       aioopt->prev_ = top_node->prev_;
@@ -144,14 +148,58 @@ int asynch_file_io::start_aio(ndk::ndk_handle handle,
         }else
         {
           aio_opt_t *itor = top_node->header_;
-          while (itor->next_ && aioopt->io_prio_ <= itor->next_->io_prio_)
+#if 0
+          while (itor->next_ 
+                 && aioopt->io_prio_ <= itor->next_->io_prio_)
             itor = itor->next_;
+#else
+          while (itor->next_)
+          {
+            if (aioopt->io_prio_ > itor->next_->io_prio_)
+              break;
+            if (aioopt->io_prio_ == itor->next_->io_prio_
+                && aioopt->offset_ < itor->next_->offset_)
+              break;
+            itor = itor->next_;
+          }
+#endif
           aioopt->next_ = itor->next_;
           itor->next_ = aioopt;
         }
       }
     }
   }
+  
+#if 0
+  // for debug
+  aio_opt_t *p = this->queue_list_;
+  int found = 0;
+  for ( ; p != 0; p = p->next_)
+  {
+    if (id == p->id_)
+    {
+      found = 1;
+      break;
+    }else
+    {
+      if (p->header_)
+      {
+        aio_opt_t *pp = p->header_;
+        for (; pp != 0; pp = pp->next_)
+        {
+          if (pp->id_ == id)
+          {
+            found = 1;
+            break;
+          }
+        }
+      }
+    }
+  }
+  assert (this->queue_list_ != 0);
+  assert (found == 1);
+  // end
+#endif
 
   this->not_empty_cond_.signal(); //
 
@@ -245,6 +293,8 @@ int asynch_file_io::svc()
         this->not_empty_cond_.wait(0);
 
       running_list = this->pop_some_request(running_list, 5);
+
+      this->enqueue_to_running_list(running_list);
     }
     this->handle_aio_requests(running_list);
   }
@@ -295,8 +345,6 @@ aio_opt_t *asynch_file_io::pop_some_request(aio_opt_t *pop_list, int num)
     this->queue_list_->prev_ = 0;
   if (pop_list_itor)
     pop_list_itor->next_ = 0;
-
-  this->enqueue_to_running_list(pop_list);
 
   return pop_list;
 }
@@ -418,16 +466,6 @@ aio_opt_t *asynch_file_io::alloc_aio_opt()
 void asynch_file_io::free_aio_opt_n(aio_opt_t *p)
 {
   ndk::guard<ndk::thread_mutex> g(this->free_list_mtx_);
-  while (p)
-  {
-  aio_opt_t *pp = p;
-    p = p->next_;
-    delete pp;
-  --this->queue_list_size_;
-  }
-  return ;
-
-  ///////////////////////////////
   aio_opt_t *tail = p;
   --this->queue_list_size_;
   while (tail->next_)
@@ -440,16 +478,12 @@ void asynch_file_io::free_aio_opt_n(aio_opt_t *p)
 }
 void asynch_file_io::free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list)
 {
-  delete p;
-  return ;  ///////////////
   p->next_ = aio_list;
   aio_list = p;
 }
 #ifdef NDK_DUMP
 void asynch_file_io::dump()
 {
-  ndk::guard<ndk::thread_mutex> g(aio_opt_t::count_mtx);
-  fprintf(stderr, "aio_opt_t count = %d\n", aio_opt_t::count);
 }
 #endif
 } // namespace ndk

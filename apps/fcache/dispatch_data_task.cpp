@@ -19,7 +19,8 @@ int dispatch_data_task::svc()
     if (this->task_idle_)
     {
       ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
-      this->dispatch_queue_not_empty_cond_.wait();
+      while (dispatch_queue_.empty())
+        this->dispatch_queue_not_empty_cond_.wait();
     }
 
     this->dispatch_data();
@@ -64,6 +65,7 @@ void dispatch_data_task::delete_client(int sid)
         delete (*itor)->transfer_agent_;
         // add end
       }
+      (*itor)->client->transfer_bytes((*itor)->transfer_bytes_);
       delete *itor;
       this->dispatch_queue_.erase(itor);
       return ;
@@ -115,6 +117,10 @@ void dispatch_data_task::dispatch_data(void)
       // 
       job->bytes_to_send_per_timep -= transfer_bytes;
       job->transfer_bytes_ += transfer_bytes;
+#if 1
+      if (result < 0)
+        job->client->transfer_error(strerror(errno));
+#endif
       if (job->transfer_bytes_ == job->content_length_)
       {
         result = -1;

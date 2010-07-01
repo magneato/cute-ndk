@@ -10,14 +10,12 @@ int reactor_event_handler::handle_msg(void *msg)
   http_session *hs = http_sessionmgr::instance()->find(event->session_id);
   if (hs)
   {
-    event_log->debug("reactor event handler find session: %d",
-                     event->session_id);
     http_client *hc = hs->client();
     assert(hc != 0);
     if (hc) delete hc;
   }else
   {
-    event_log->debug("reactor event handler not find session: %d",
+    event_log->error("reactor event handler not find session: %d",
                      event->session_id);
   }
   delete event;

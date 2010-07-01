@@ -68,8 +68,8 @@ namespace ndk
   {
     friend class asynch_file_io;
   public:
-    aio_opt_t() { reset();ndk::guard<ndk::thread_mutex> g(aio_opt_t::count_mtx); aio_opt_t::count++;}
-    ~aio_opt_t() { ndk::guard<ndk::thread_mutex> g(aio_opt_t::count_mtx); aio_opt_t::count--; }
+    aio_opt_t() { reset(); }
+    ~aio_opt_t() { }
 
     inline ndk::ndk_handle handle() const
     { return this->handle_; }
@@ -99,8 +99,6 @@ namespace ndk
     void reset();
 
   protected:
-    static int count;
-    static ndk::thread_mutex count_mtx;
     ndk::ndk_handle handle_;
     int opcode_;
     int errcode_;
@@ -190,7 +188,6 @@ namespace ndk
 
     aio_opt_t *alloc_aio_opt_i(aio_opt_t *&aio_list)
     {
-      return new aio_opt_t();
       if (aio_list == 0) aio_list = new aio_opt_t();
       aio_opt_t *aioopt = aio_list;
       aio_list = aio_list->next_;
@@ -205,6 +202,8 @@ namespace ndk
       this->free_aio_opt_i(p, this->free_list_);
       --this->queue_list_size_;
     }
+
+    //
     inline void free_aio_opt_n(aio_opt_t *p);
 
     //

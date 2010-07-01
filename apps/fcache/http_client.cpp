@@ -1,7 +1,8 @@
 #include "http_client.h"
 #include "http_session.h"
-#include "http_sessionmgr.h"
 #include "file_manager.h"
+#include "buffer_manager.h"
+#include "http_sessionmgr.h"
 #include "dispatch_data_task.h"
 #include "mem_cache_transfer.h"
 #include "serial_file_transfer.h"
@@ -15,6 +16,21 @@
 #include <sys/mman.h>
 #include <sys/types.h>
 
+//
+int64_t   g_requests        = 0;
+int64_t   g_cache_file_requests = 0;
+int64_t   g_disk_file_reqeusts  = 0;
+int64_t   g_finished        = 0;
+int64_t   g_hit_cache       = 0;
+int64_t   g_hit_disk        = 0;
+int       g_payload         = 0;
+int       g_cache_mem_used  = 0;
+//
+
+extern buffer_manager *file_io_cache_mgr;
+extern size_t g_min_mem_cache_size;
+extern size_t g_max_mem_cache_size;
+extern int g_concurrency_num;
 extern std::string g_doc_root;
 extern dispatch_data_task *g_dispatch_data_task;
 extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
@@ -22,10 +38,21 @@ extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
 static ndk::logger* net_log = ndk::log_manager::instance()->get_logger("root.net");
 static ndk::logger* access_log = ndk::log_manager::instance()->get_logger("root.access");
 
+const char *HTTP_METHOD[] = {
+  "UNKNOW",
+  "GET",
+  "HEAD"
+};
+
 http_client::~http_client()
 {
+  if (this->http_method_ == HTTP_HEAD
+      || this->http_method_ == HTTP_GET)
+    ++g_finished;
+
   if (this->session_id_ != -1)
   {
+    --g_payload;
     g_dispatch_data_task[this->dispatch_data_task_idx_].delete_client(this->session_id_);
     http_session *hs = 
       http_sessionmgr::instance()->remove(this->session_id_);
@@ -39,13 +66,36 @@ http_client::~http_client()
     this->recv_buff_ = 0;
   }
 
-  if (this->content_length_ > 0 && this->send_bytes_ == this->content_length_)
-  {
-    ndk::time_value diff = ndk::time_value::gettimeofday() - this->begin_time_;
-    net_log->rinfo("send data completely! [%d bytes used %lu msecs]", 
-                   this->content_length_,
-                   diff.msec());
-  }
+  char st[32] = {0};
+  char et[32] = {0};
+  ndk::time_value tv_s = this->begin_time_;
+  tv_s.sec(0);
+  ndk::date_time(this->begin_time_.sec()).to_str(st, sizeof(st));
+
+  ndk::time_value now = ndk::time_value::gettimeofday();
+  ndk::time_value tv_e = now;
+  tv_e.sec(0);
+  ndk::date_time(now.sec()).to_str(et, sizeof(et));
+
+  char addr[32] = {0};  // 
+  this->remote_addr_.get_host_addr(addr, sizeof(addr));
+  char log[1024] = {0};
+  int len = ::snprintf(log, sizeof(log),
+                       "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d %lld %lld \"%s\"\n",
+                       st,
+                       tv_s.msec(),
+                       et,
+                       tv_e.msec(),
+                       addr,
+                       HTTP_METHOD[this->http_method_],
+                       this->uri_.c_str(),
+                       this->response_code_,
+                       this->content_length_,
+                       this->transfer_bytes_,
+                       this->session_desc_.c_str());
+
+  access_log->puts(log, len);
+
 }
 int http_client::open(void *)
 {
@@ -80,11 +130,11 @@ int http_client::handle_input(ndk::ndk_handle )
                                  this->recv_buff_->length());
   if (result < 0)
   {
+    if (errno == EWOULDBLOCK)
+      return 0;
     net_log->error("socket %d error [%s]!",
                    this->peer().get_handle(),
                    strerror(errno));
-    if (errno == EWOULDBLOCK)
-      return 0;
     return -1;
   }else if (result == 0)
   {
@@ -123,6 +173,8 @@ int http_client::handle_close(ndk::ndk_handle , ndk::reactor_mask m)
   this->destroy();
   return 0;
 }
+static const char *hit_cache = "HIT CACHE";
+static const char *hit_disk = "HIT DISK";
 int http_client::handle_data()
 {
   this->recv_buff_->set_eof();
@@ -133,23 +185,39 @@ int http_client::handle_data()
     net_log->rinfo("recv an uncompletd request");
     return 0;
   }
-  char *uri_begin_p = ptr + 4;
+  if (ptr[0] == 'G' && ptr[1] == 'E' && ptr[2] == 'T')
+    this->http_method_ = HTTP_GET;
+  else if (ptr[0] == 'H' && ptr[1] == 'E' && ptr[2] == 'A' && ptr[3] == 'D')
+    this->http_method_ = HTTP_HEAD;
+  else
+  {
+    net_log->error("unsupport http method [%s]", ptr);
+    return -1;
+  }
+  char *uri_begin_p = ptr;
+  if (this->http_method_ == HTTP_GET)
+    uri_begin_p += sizeof("GET");
+  else if (this->http_method_ == HTTP_HEAD)
+    uri_begin_p += sizeof("HEAD");
   char *uri_end_p = ::strstr(uri_begin_p, " HTTP/1.");
   if (uri_end_p == 0)
   {
-    this->response_client(400, 0, 0, "-", "Not found 'HTTP/1.x'");
+    this->session_desc_ = "Not found 'HTTP/1.x'";
+    this->response_client(400);
     return -1;
   }
   char *host_p = ::strstr(uri_end_p, "Host: ");
   if (host_p == 0)
   {
-    this->response_client(400, 0, 0, "-", "Not found 'Host' header");
+    this->session_desc_ = "Not found 'Host' header";
+    this->response_client(400);
     return -1;
   }
   char *host_p_end = ::strstr(host_p + sizeof("Host:"), "\r\n");
   if (host_p_end == 0)
   {
-    this->response_client(400, 0, 0, "-", "Not found '\\r\\n' after 'Host'");
+    this->session_desc_ = "Not found '\\r\\n' after 'Host'";
+    this->response_client(400);
     return -1;
   }
   std::string host(host_p + sizeof("Host:"),
@@ -165,7 +233,8 @@ int http_client::handle_data()
     char *range_p_end = ::strstr(range_p + sizeof("Range: bytes=") - 1, "\r\n");
     if (range_p_end == 0)
     {
-      this->response_client(400, 0, 0, "-", "Not found '\\r\\n' after 'Range'");
+      this->session_desc_ = "Not found '\\r\\n' after 'Range'";
+      this->response_client(400);
       return -1;
     }
     char *endptr = 0;
@@ -187,10 +256,15 @@ int http_client::handle_data()
     }
   }
 
-  std::string uri(uri_begin_p, uri_end_p - uri_begin_p);
-  std::string url = "http://" + host + uri;
+  this->uri_.assign(uri_begin_p, uri_end_p - uri_begin_p);
+  if (this->uri_.length() == 1)
+  {
+    this->show_status();
+    return -1;
+  }
+  std::string url = "http://" + host + this->uri_;
 
-  std::string filename = g_doc_root + uri;
+  std::string filename = g_doc_root + this->uri_;
 
   fileinfo_ptr fileinfo = file_manager::instance()->find(url);
   if (!fileinfo)  
@@ -211,51 +285,76 @@ int http_client::handle_data()
     }else
     {
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
+      this->session_desc_ = strerror(errno);
       if (errno == ENOENT)
-        this->response_client(404, 0, 0, uri, strerror(errno));
+        this->response_client(404);
       else
-        this->response_client(503, 0, 0, uri, strerror(errno));
+        this->response_client(503);
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
       return -1;
     }
   }
 
   this->recv_msg_ok_ = 1;
+  ++g_requests;
+  if (g_payload > g_concurrency_num)
+  {
+    this->session_desc_ = "Out of payload";
+    this->response_client(503);
+    return -1;
+  }
 
   if (end_pos == -1)
     end_pos = fileinfo->length() - 1;
 
-  int64_t content_length = end_pos - start_pos + 1;
+  this->content_length_ = end_pos - start_pos + 1;
+
+  if (this->http_method_ == HTTP_HEAD)
+  {
+    this->session_desc_ = "Get resource infor!";
+    this->response_client(200, start_pos, end_pos);
+    return -1;
+  }
 
   int result = 0;
   transfer_agent *trans_agent = 0;
-  if (fileinfo->length() < 1024*1024*16)
+  if (fileinfo->length() <= g_max_mem_cache_size 
+      && fileinfo->length() >= g_min_mem_cache_size)
   {
-    trans_agent = new mem_cache_transfer(start_pos, content_length);
+    ++g_cache_file_requests;
+    trans_agent = new mem_cache_transfer(start_pos, this->content_length_);
     result = trans_agent->open(fileinfo);
     if (result != 0)
     {
       // cache manager is full.
       delete trans_agent;
       trans_agent = 0;
+    }else
+    {
+      this->session_desc_ = hit_cache;
     }
   }
 
   // direct read file from disk.
   if (trans_agent == 0)
   {
-    trans_agent = new serial_file_transfer(start_pos, content_length);
+    ++g_disk_file_reqeusts;
+    trans_agent = new serial_file_transfer(start_pos, this->content_length_);
     if (trans_agent->open(fileinfo) != 0)
     {
       delete trans_agent;
-      this->response_client(503, 0, 0, uri, strerror(errno));
+      this->response_client(503);
       return -1;
+    }else
+    {
+      this->session_desc_ = hit_disk;
+      ++g_hit_disk;
     }
   }
   if (partial == 1)
-    result = this->response_client(206, start_pos, end_pos, uri, "HIT");
+    result = this->response_client(206, start_pos, end_pos);
   else
-    result = this->response_client(200, start_pos, end_pos, uri, "HIT");
+    result = this->response_client(200, start_pos, end_pos);
   if (result != -1)
   {
     this->session_id_ = http_sessionmgr::instance()->alloc_sessionid();
@@ -267,9 +366,12 @@ int http_client::handle_data()
     job->session_id = this->session_id_;
     job->transfer_agent_ = trans_agent;
     job->client = this;
-    job->content_length_ = content_length;
+    job->content_length_ = this->content_length_;
     g_dispatch_data_task[0].push_job(job);
-    net_log->debug("insert sessionid %d", this->session_id_);
+    net_log->debug("insert sessionid %d h = %d", 
+                   this->session_id_,
+                   this->get_handle());
+    ++g_payload;
   }else if (trans_agent) 
   {
     delete trans_agent;
@@ -277,11 +379,10 @@ int http_client::handle_data()
   return result;
 }
 int http_client::response_client(int status,
-                                 int64_t start_pos,
-                                 int64_t end_pos,
-                                 const std::string &uri,
-                                 const std::string &desc)
+                                 int64_t start_pos/* = 0*/,
+                                 int64_t end_pos/* = 0*/)
 {
+  this->response_code_ = status;
   std::ostringstream os;
   // header
   switch(status)
@@ -330,81 +431,66 @@ int http_client::response_client(int status,
   }
   os << "\r\n";
   int result = this->peer().send(os.str().c_str(), os.str().length());
-  char st[32] = {0};
-  ndk::time_value tv = this->begin_time_;
-  tv.sec(0);
-  ndk::date_time(this->begin_time_.sec()).to_str(st, sizeof(st));
-  char addr[32] = {0};  // 
-  this->remote_addr_.addr_to_string(addr, sizeof(addr));
-  char log[1024] = {0};
-  int len = ::snprintf(log, sizeof(log),
-                       "[%s.%03lu] %s %s %s %d \"%s\"\n",
-                       st,
-                       tv.msec(),
-                       addr,
-                       "GET",
-                       uri.c_str(),
-                       status,
-                       desc.c_str());
-
-  access_log->puts(log, len);
-
+  if (result < 0)
+  {
+    net_log->error("send response failed! [h = %d][%s]",
+                   this->get_handle(),
+                   strerror(errno));
+  }
   return result < 0 ? -1 : 0;
 }
 int http_client::show_status()
 {
-#if 0
   //g_cache_manager->check();  // for debug
   STRACE("");
-  static int v1 = 10, v2 = 10, v3 = 10, v4 = 10; 
-  static int v5 = 10, v6 = 10, v7 = 10, v8 = 10, v9 = 10;
   static char requests[]     = "requests";
-  static int  requests_w     = v1;
+  static int  requests_w     = sizeof(requests) + 1;
+  static char c_file_reqs[]  = "c_file_reqs";
+  static int  c_file_reqs_w  = sizeof(c_file_reqs) + 1;
+  static char d_file_reqs[]  = "d_file_reqs";
+  static int  d_file_reqs_w  = sizeof(d_file_reqs) + 1;
   static char finished[]     = "finished";
-  static int  finished_w     = v2;
-  static char hit[]          = "hit";
-  static int  hit_w          = v3;
-  static char miss[]         = "miss";
-  static int  miss_w         = v4;
-  static char hit_rate[]     = "hit_rate";
-  static int  hit_rate_w     = v5;
-  static char miss_rate[]    = "miss_rate";
-  static int  miss_rate_w    = v6;
+  static int  finished_w     = sizeof(finished) + 1;
+  static char hit_cache[]    = "hit_cache";
+  static int  hit_cache_w    = sizeof(hit_cache) + 1;
+  static char hit_disk[]     = "hit_disk";
+  static int  hit_disk_w     = sizeof(hit_disk) + 1;
+  static char hit_c_rate[]   = "hit_cache_rate";
+  static int  hit_c_rate_w   = sizeof(hit_c_rate) + 1;
   static char payload[]      = "payload";
-  static int  payload_w      = v7;
-  static char put_obj[]      = "put_obj";
-  static int  put_obj_w      = v8;
-  static char drop_obj[]     = "drop_obj";
-  static int  drop_obj_w     = v9;
+  static int  payload_w      = sizeof(payload) + 1;
+  static char cache_mem_used[]  = "c_mem_used(mb)";
+  static int  cache_mem_used_w  = sizeof(cache_mem_used) + 1;
+  static char aio_mem_used[]  = "aio_mem_used(mb)";
+  static int  aio_mem_used_w  = sizeof(aio_mem_used) + 1;
 
   std::ostringstream  ostr;
   ostr << std::setfill(' ')
     << std::setiosflags(std::ios::left);
   ostr << std::setw(requests_w) << requests
     << std::setw(finished_w) << finished
-    << std::setw(hit_w) << hit
-    << std::setw(miss_w) << miss
-    << std::setw(hit_rate_w) << hit_rate
-    << std::setw(miss_rate_w) << miss_rate
+    << std::setw(c_file_reqs_w) << c_file_reqs 
+    << std::setw(d_file_reqs_w) << d_file_reqs 
+    << std::setw(hit_cache_w) << hit_cache
+    << std::setw(hit_c_rate_w) << hit_c_rate
+    << std::setw(hit_disk_w) << hit_disk
     << std::setw(payload_w) << payload
-    << std::setw(put_obj_w) << put_obj
-    << std::setw(drop_obj_w) << drop_obj
+    << std::setw(cache_mem_used_w) << cache_mem_used
+    << std::setw(aio_mem_used_w) << aio_mem_used
     << std::endl;
-  int hrate  = 0;
+  int h_c_rate  = 0;
   if (g_finished > 0)
-    hrate = int(int64_t(g_hit * 100) / int64_t(g_request_ok));
-  int mrate = 0;
-  if (g_finished > 0)
-    mrate = int(int64_t(g_miss * 100) / int64_t(g_request_ok));
+    h_c_rate = int((g_hit_cache * 100) / g_cache_file_requests);
   ostr << std::setw(requests_w) << g_requests
     << std::setw(finished_w) << g_finished
-    << std::setw(hit_w) << g_hit
-    << std::setw(miss_w) << g_miss
-    << std::setw(hit_rate_w) << hrate
-    << std::setw(miss_rate_w) << mrate
+    << std::setw(c_file_reqs_w) << g_cache_file_requests
+    << std::setw(d_file_reqs_w) << g_disk_file_reqeusts
+    << std::setw(hit_cache_w) << g_hit_cache
+    << std::setw(hit_c_rate_w) << h_c_rate
+    << std::setw(hit_disk_w) << g_hit_disk
     << std::setw(payload_w) << g_payload
-    << std::setw(put_obj_w) << g_put_obj
-    << std::setw(drop_obj_w) << g_drop_obj
+    << std::setw(cache_mem_used_w) << g_cache_mem_used/1024/1024
+    << std::setw(aio_mem_used_w) << file_io_cache_mgr->malloc_bytes()/1024/1024
     << std::endl;
   std::ostringstream os;
   os << "HTTP/1.0 200 OK\r\n"
@@ -415,6 +501,5 @@ int http_client::show_status()
     << "\r\n"
     << ostr.str().c_str();
   this->peer().send(os.str().c_str(), os.str().length());
-#endif
   return -1;
 }

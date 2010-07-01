@@ -11,7 +11,7 @@
 ###########################################################################
 
                                BIN_DIR = ./bin
-                                TARGET = $(BIN_DIR)/libnetdkit.so.1.0
+                                TARGET = $(BIN_DIR)/libnetdkit.so.2.0
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                 MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DNDK_DUMP#-DNDK_STRACE
                                     CC = gcc

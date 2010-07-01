@@ -37,6 +37,9 @@ dispatch_data_task *g_dispatch_data_task = 0;
 int g_aio_task_size = 1;
 int g_aio_task_thread_size = 2;
 int g_dispatch_data_task_thread_size = 1;
+size_t g_max_mem_cache_size = 16*1024*1024;
+size_t g_min_mem_cache_size = 32;
+
 ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager = 0;
 buffer_manager *file_io_cache_mgr = new buffer_manager(1024*1024*1);
 //
@@ -169,9 +172,6 @@ int main(int argc, char *argv[])
   int high_water_mark = 0;
   int lower_water_mark = 0;
 
-  int max_cache_size = 16*1024*1024;
-  int min_cache_size = 32;
-
   int count = 0;
   
   std::string log_config;
@@ -233,11 +233,11 @@ int main(int argc, char *argv[])
       ++count;
       break;
     case 'M':
-      max_cache_size = ::atoi(optarg);
+      g_max_mem_cache_size = ::atoi(optarg);
       ++count;
       break;
     case 'm':
-      min_cache_size = ::atoi(optarg);
+      g_min_mem_cache_size = ::atoi(optarg);
       ++count;
       break;
     case 'a':
@@ -290,8 +290,8 @@ int main(int argc, char *argv[])
     return -1;
   }
   g_cache_manager = 
-    new ndk::cache_manager<std::string, ndk::thread_mutex>(min_cache_size,
-                                                           max_cache_size,
+    new ndk::cache_manager<std::string, ndk::thread_mutex>(g_min_mem_cache_size,
+                                                           g_max_mem_cache_size,
                                                            high_water_mark,
                                                            lower_water_mark);
   g_dispatch_data_task = new dispatch_data_task[g_dispatch_data_task_thread_size];
