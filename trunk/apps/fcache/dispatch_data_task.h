@@ -72,11 +72,14 @@ protected:
   void delete_job_i(dispatch_job *job);
 private:
   volatile int task_idle_;
+
   ndk::time_value poll_before_;
   ndk::time_value poll_after_;
   ndk::time_value diff_time_;
+
   typedef std::deque<dispatch_job *> dispatch_queue_t;
   typedef std::deque<dispatch_job *>::iterator dispatch_queue_itor;
+
   dispatch_queue_t dispatch_queue_;
   ndk::thread_mutex dispatch_queue_mtx_;
   ndk::condition<ndk::thread_mutex> dispatch_queue_not_empty_cond_;
