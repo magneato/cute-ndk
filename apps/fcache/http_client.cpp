@@ -10,7 +10,7 @@
 #include <ndk/logger.h>
 #include <ndk/cache_manager.h>
 
-#include <fstream>
+#include <sstream>
 #include <iomanip>
 #include <sys/stat.h>
 #include <sys/mman.h>
@@ -31,6 +31,7 @@ extern buffer_manager *file_io_cache_mgr;
 extern size_t g_min_mem_cache_size;
 extern size_t g_max_mem_cache_size;
 extern int g_concurrency_num;
+extern int g_listen_port;
 extern std::string g_doc_root;
 extern dispatch_data_task *g_dispatch_data_task;
 extern ndk::cache_manager<std::string, ndk::thread_mutex> *g_cache_manager;
@@ -222,6 +223,12 @@ int http_client::handle_data()
   }
   std::string host(host_p + sizeof("Host:"),
                    host_p_end - (host_p + sizeof("Host:")));
+  if (host.find(':') == std::string::npos)
+  {
+    std::ostringstream ostr;
+    ostr << host << ":" << g_listen_port;
+    host = ostr.str();
+  }
 
   char *range_p = ::strstr(uri_end_p, "Range: bytes=");
   int64_t start_pos = 0;
@@ -284,7 +291,6 @@ int http_client::handle_data()
       if (fd != NDK_INVALID_HANDLE) ::close(fd);
     }else
     {
-      if (fd != NDK_INVALID_HANDLE) ::close(fd);
       this->session_desc_ = strerror(errno);
       if (errno == ENOENT)
         this->response_client(404);
@@ -491,7 +497,12 @@ int http_client::show_status()
     << std::setw(payload_w) << g_payload
     << std::setw(cache_mem_used_w) << g_cache_mem_used/1024/1024
     << std::setw(aio_mem_used_w) << file_io_cache_mgr->malloc_bytes()/1024/1024
-    << std::endl;
+    << std::endl << std::endl;
+  std::deque<std::string> l = file_manager::instance()->get_all_urls();
+  std::deque<std::string>::iterator lp;
+  for (lp = l.begin(); lp != l.end(); ++lp)
+    ostr << *lp << std::endl;
+
   std::ostringstream os;
   os << "HTTP/1.0 200 OK\r\n"
     << "Server: fcache\r\n"

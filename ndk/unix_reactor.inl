@@ -61,6 +61,25 @@ int unix_reactor_handler_repository::is_invalid_handle(ndk_handle handle) const
     return 1;
   return 0;
 }
+inline
+void unix_reactor_handler_repository::suspend(ndk_handle handle)
+{
+  if (this->handle_in_range(handle))
+    this->handlers_[handle].suspended_ = true;
+}
+inline
+void unix_reactor_handler_repository::resume(ndk_handle handle)
+{
+  if (this->handle_in_range(handle))
+    this->handlers_[handle].suspended_ = false;
+}
+inline
+bool unix_reactor_handler_repository::suspended(ndk_handle handle) const
+{
+  if (this->handle_in_range(handle))
+    return this->handlers_[handle].suspended_;
+  return false;
+}
 // --------------------------------------------------------------------------
 inline
 unix_reactor_notify_tuple *unix_reactor_notify::alloc_notify_tuple(event_handler *eh,

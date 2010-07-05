@@ -66,9 +66,6 @@ namespace ndk
     int remove_handle(ndk_handle h, select_handle *&sh);
 
     //
-    int reactor_mask_to_select_event(ndk_handle h, reactor_mask mask);
-
-    //
     int handle_opt_i(ndk_handle handle, reactor_mask mask, int opt);
 
     int find_handle(ndk_handle handle, select_handle *sh);
@@ -158,6 +155,24 @@ namespace ndk
      */
     virtual int remove_handler(ndk_handle io_handle,
                                reactor_mask mask);
+
+    // Suspend handle temporarily.
+    virtual int suspend_handler(ndk_handle handle);
+
+    /**
+     * Suspend event_handler temporarily.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    virtual int suspend_handler(event_handler *eh);
+
+    // Resume handle.
+    virtual int resume_handler(ndk_handle handle);
+
+    /**
+     * Resume event_handler.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    virtual int resume_handler(event_handler *eh);
 
     // ++ Timer management.
 
@@ -303,6 +318,24 @@ namespace ndk
      */
     virtual int remove_handler(ndk_handle io_handle,
                                reactor_mask mask);
+
+    // Suspend handle temporarily.
+    virtual int suspend_handler(ndk_handle handle);
+
+    /**
+     * Suspend event_handler temporarily.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    virtual int suspend_handler(event_handler *eh);
+
+    // Resume handle.
+    virtual int resume_handler(ndk_handle handle);
+
+    /**
+     * Resume event_handler.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    virtual int resume_handler(event_handler *eh);
 
     // ++ Timer management.
 

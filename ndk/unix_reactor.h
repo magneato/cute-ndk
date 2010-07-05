@@ -38,9 +38,12 @@ namespace ndk
   {
   public:
     reactor_event_tuple()
-      : event_handler_(0),
+      : suspended_(false),
+      event_handler_(0),
       mask_(0)
     { }
+
+    bool suspended_;
 
     // The event handler
     event_handler *event_handler_;
@@ -105,6 +108,17 @@ namespace ndk
     // Retrieve the event mask for the event handler associated with the 
     // given handle.
     reactor_mask mask(ndk_handle handle);
+
+    // Mark the event handler associated with the given handle as
+    // "suspended."
+    void suspend(ndk_handle handle);
+
+    // Mark the event handler associated with the given handle as
+    // "resumed."
+    void resume(ndk_handle handle);
+
+    // Is the event handler for the given handle suspended?
+    bool suspended(ndk_handle handle) const;
   private:
     // Maximum number of handles.
     int max_size_;
@@ -338,6 +352,12 @@ namespace ndk
     // Remove the event handler which relate the handle
     int remove_handler_i(ndk_handle handle,
                          reactor_mask mask);
+
+    // Suspend handle temporarily.
+    int suspend_handler_i(ndk_handle handle);
+
+    // Resume handle.
+    int resume_handler_i(ndk_handle handle);
 
     virtual int handle_opt_i(ndk_handle handle,
                              reactor_mask mask,

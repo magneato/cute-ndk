@@ -239,23 +239,53 @@ int select_reactor_base::handle_opt_i(ndk_handle handle,
   else if (opt == unix_reactor::clr_mask)
     opt = unix_reactor::set_mask;
 
-  switch(opt)
+  //
+  if (opt == unix_reactor::add_mask
+      || opt == unix_reactor::set_mask)
   {
-  case unix_reactor::add_mask: 
-    return this->reactor_mask_to_select_event(handle, mask);
-  case unix_reactor::set_mask: 
-    return this->reactor_mask_to_select_event(handle, mask);
-  case unix_reactor::clr_mask: 
-    return this->reactor_mask_to_select_event(handle, mask);
-  default: return -1;
-  }
-  return 0;
-}
-int select_reactor_base::reactor_mask_to_select_event(ndk_handle handle, 
-                                                      reactor_mask mask)
-{
-  STRACE("");
-  if (mask == event_handler::null_mask)
+    bool readable = false, writeable = false, exception = false;
+    if (NDK_BIT_ENABLED(mask, event_handler::read_mask))
+      readable = true;
+
+    if (NDK_BIT_ENABLED(mask, event_handler::accept_mask))
+      readable = true;
+
+    if (NDK_BIT_ENABLED(mask, event_handler::connect_mask))
+    {
+      readable = true; writeable = true;
+    }
+
+    if (NDK_BIT_ENABLED(mask, event_handler::write_mask))
+      writeable = true;
+
+    if (NDK_BIT_ENABLED(mask, event_handler::except_mask))
+      exception = true;
+
+    if (opt == unix_reactor::set_mask)
+    {
+      if (this->handle_list_rd_ && !readable)
+        this->remove_handle(handle, this->handle_list_rd_);
+      if (this->handle_list_wr_ && !writeable)
+        this->remove_handle(handle, this->handle_list_wr_);
+      if (this->handle_list_ex_ && !exception)
+        this->remove_handle(handle, this->handle_list_ex_);
+    }
+    if (readable)
+    {
+      if (this->append_handle(handle, this->handle_list_rd_) != 0)
+        return -1;
+    }
+    if (writeable)
+    {
+      if (this->append_handle(handle, this->handle_list_wr_) != 0)
+        return -1;
+    }
+    if (exception)
+    {
+      if (this->append_handle(handle, this->handle_list_ex_) != 0)
+        return -1;
+    }
+  }else if (opt == unix_reactor::clr_mask)
   {
     if (this->handle_list_rd_)
       this->remove_handle(handle, this->handle_list_rd_);
@@ -263,42 +293,8 @@ int select_reactor_base::reactor_mask_to_select_event(ndk_handle handle,
       this->remove_handle(handle, this->handle_list_wr_);
     if (this->handle_list_ex_)
       this->remove_handle(handle, this->handle_list_ex_);
-    return 0;
   }
 
-  bool readable = false, writeable = false, exception = false;
-  if (NDK_BIT_ENABLED(mask, event_handler::read_mask))
-    readable = true;
-
-  if (NDK_BIT_ENABLED(mask, event_handler::accept_mask))
-    readable = true;
-
-  if (NDK_BIT_ENABLED(mask, event_handler::connect_mask))
-  {
-    readable = true; writeable = true;
-  }
-
-  if (NDK_BIT_ENABLED(mask, event_handler::write_mask))
-    writeable = true;
-
-  if (NDK_BIT_ENABLED(mask, event_handler::except_mask))
-    exception = true;
-
-  if (readable)
-  {
-    if (this->append_handle(handle, this->handle_list_rd_) != 0)
-      return -1;
-  }
-  if (writeable)
-  {
-    if (this->append_handle(handle, this->handle_list_wr_) != 0)
-      return -1;
-  }
-  if (exception)
-  {
-    if (this->append_handle(handle, this->handle_list_ex_) != 0)
-      return -1;
-  }
   return 0;
 }
 int select_reactor_base::find_handle(ndk_handle handle, select_handle *sh)

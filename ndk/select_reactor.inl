@@ -92,6 +92,38 @@ int select_reactor<reactor_token>::remove_handler(ndk_handle handle,
                                 mask);
 }
 inline
+int select_reactor<reactor_token>::suspend_handler(ndk_handle handle)
+{
+  STRACE("");
+  if (handle == NDK_INVALID_HANDLE) return -1;
+  guard<reactor_token> g(this->token_);
+  return this->suspend_handler_i(handle);
+}
+inline
+int select_reactor<reactor_token>::suspend_handler(event_handler *eh)
+{
+  STRACE("");
+  if (eh == 0) return -1;
+  guard<reactor_token> g(this->token_);
+  return this->suspend_handler_i(eh->get_handle());
+}
+inline
+int select_reactor<reactor_token>::resume_handler(ndk_handle handle)
+{
+  STRACE("");
+  if (handle == NDK_INVALID_HANDLE) return -1;
+  guard<reactor_token> g(this->token_);
+  return this->resume_handler_i(handle);
+}
+inline
+int select_reactor<reactor_token>::resume_handler(event_handler *eh)
+{
+  STRACE("");
+  if (eh == 0) return -1;
+  guard<reactor_token> g(this->token_);
+  return this->resume_handler_i(eh->get_handle());
+}
+inline
 int select_reactor<reactor_token>::schedule_timer(event_handler *eh,
                                                   const void *arg,
                                                   const time_value &delay,
@@ -235,6 +267,34 @@ int select_reactor<reactor_null_token>::remove_handler(ndk_handle handle,
     return -1;
   return this->remove_handler_i(handle,
                                 mask);
+}
+inline
+int select_reactor<reactor_null_token>::suspend_handler(ndk_handle handle)
+{
+  STRACE("");
+  if (handle == NDK_INVALID_HANDLE) return -1;
+  return this->suspend_handler_i(handle);
+}
+inline
+int select_reactor<reactor_null_token>::suspend_handler(event_handler *eh)
+{
+  STRACE("");
+  if (eh == 0) return -1;
+  return this->suspend_handler_i(eh->get_handle());
+}
+inline
+int select_reactor<reactor_null_token>::resume_handler(ndk_handle handle)
+{
+  STRACE("");
+  if (handle == NDK_INVALID_HANDLE) return -1;
+  return this->resume_handler_i(handle);
+}
+inline
+int select_reactor<reactor_null_token>::resume_handler(event_handler *eh)
+{
+  STRACE("");
+  if (eh == 0) return -1;
+  return this->resume_handler_i(eh->get_handle());
 }
 inline
 int select_reactor<reactor_null_token>::schedule_timer(event_handler *eh,
