@@ -11,6 +11,7 @@
 #define FILE_MANAGER_H_
 
 #include <map>
+#include <deque>
 #include <string>
 #include <ndk/singleton.h>
 
@@ -48,6 +49,15 @@ public:
   inline void remove(const std::string &url)
   {
     this->file_map_.erase(url);
+  }
+
+  std::deque<std::string> get_all_urls()
+  {
+    std::deque<std::string> l;
+    file_map_iter pos = this->file_map_.begin();
+    for (; pos != this->file_map_.end(); ++pos)
+      l.push_back(pos->first);
+    return l;
   }
 private:
   typedef std::map<std::string, fileinfo_ptr> file_map_t;

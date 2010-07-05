@@ -290,6 +290,48 @@ int unix_reactor::remove_handler_i(ndk_handle handle,
 
   return 0;
 }
+int unix_reactor::suspend_handler_i(ndk_handle handle)
+{
+  if (this->handler_rep_.find(handle) == 0)
+    return -1;
+
+  if (this->handler_rep_.suspended(handle))
+    return 0;
+
+  // Remove the handle from the "interest set." 
+  //
+  // Note that the associated event handler is still in the handler
+  // repository, but no events will be polled on the given handle thus
+  // no event will be dispatched to the event handler. 
+
+  if (this->handle_opt_i(handle, 
+                         event_handler::null_mask, 
+                         unix_reactor::clr_mask) == -1)
+    return -1;
+
+  this->handler_rep_.suspend(handle);
+  return 0;
+}
+int unix_reactor::resume_handler_i(ndk_handle handle)
+{
+  if (this->handler_rep_.find(handle) == 0
+      || this->handler_rep_.suspended(handle) == false)
+    return -1;
+
+  reactor_mask mask = this->handler_rep_.mask(handle);
+  if (mask == event_handler::null_mask)
+    return -1;
+
+  // Place the handle back in to the "interest set."
+  //
+  // Events for the given handle will once again be polled.
+  if (this->handle_opt_i(handle, 
+                         mask,
+                         unix_reactor::add_mask) == -1)
+    return -1;
+  this->handler_rep_.resume(handle);
+  return 0;
+}
 #ifdef NDK_DUMP
 void unix_reactor::dump()
 {

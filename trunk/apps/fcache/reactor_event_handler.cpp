@@ -15,7 +15,7 @@ int reactor_event_handler::handle_msg(void *msg)
     if (hc) delete hc;
   }else
   {
-    event_log->error("reactor event handler not find session: %d",
+    event_log->debug("reactor event handler not find session: %d",
                      event->session_id);
   }
   delete event;

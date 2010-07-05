@@ -301,7 +301,7 @@ int main(int argc, char *argv[])
   g_aio_task = new ndk::asynch_file_io*[g_aio_task_size];
   for (int i = 0; i < g_aio_task_size; ++i)
   {
-    g_aio_task[i] = new ndk::asynch_file_io(128);
+    g_aio_task[i] = new ndk::asynch_file_io(256);
     g_aio_task[i]->open(g_aio_task_thread_size);
   }
 

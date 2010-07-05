@@ -150,6 +150,28 @@ namespace ndk
                               reactor_mask mask)
     { return this->reactor_impl_->remove_handler(eh, mask); }
 
+    // Suspend handle temporarily.
+    inline int suspend_handler(ndk_handle handle)
+    { return this->reactor_impl_->suspend_handler(handle); }
+
+    /**
+     * Suspend event_handler temporarily.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    inline int suspend_handler(event_handler *eh)
+    { return this->reactor_impl_->suspend_handler(eh); }
+
+    // Resume handle.
+    inline int resume_handler(ndk_handle handle)
+    { return this->reactor_impl_->resume_handler(handle); }
+
+    /**
+     * Resume event_handler.
+     * Handle is obtained from event_handler::get_handle().
+     */
+    inline int resume_handler(event_handler *eh)
+    { return this->reactor_impl_->resume_handler(eh); }
+
     // ++ Timer management.
     /**
      * Schedule a timer that will expire after an <delay> amount

@@ -357,17 +357,23 @@ void asynch_file_io::handle_aio_requests(aio_opt_t *running_list)
     switch(aioopt->opcode_)
     {
     case AIO_READ:
-      result = ::pread(aioopt->handle_,
-                       (void*)aioopt->buffer_,
-                       aioopt->i_nbytes_,
-                       aioopt->offset_);
+      do
+      {
+        result = ::pread(aioopt->handle_,
+                         (void*)aioopt->buffer_,
+                         aioopt->i_nbytes_,
+                         aioopt->offset_);
+      }while (result == -1 && errno == EINTR);
       callback = &asynch_handler::handle_aio_read;
       break;
     case AIO_WRITE:
-      result = ::pwrite(aioopt->handle_,
-                        (const void*)aioopt->buffer_,
-                        aioopt->i_nbytes_,
-                        aioopt->offset_);
+      do
+      {
+        result = ::pwrite(aioopt->handle_,
+                          (const void*)aioopt->buffer_,
+                          aioopt->i_nbytes_,
+                          aioopt->offset_);
+      }while (result == -1 && errno == EINTR);
       callback = &asynch_handler::handle_aio_write;
       break;
     default:
