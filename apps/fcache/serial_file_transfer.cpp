@@ -56,7 +56,7 @@ int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
   this->handle_ = fileinfo->file_handle();
   if (this->handle_ == NDK_INVALID_HANDLE)
   {
-    this->handle_ = ::open(fileinfo->filename().c_str(), O_RDONLY);
+    this->handle_ = ::open(fileinfo->filename().c_str(), O_RDWR);
     if (this->handle_ == NDK_INVALID_HANDLE)
     {
       file_io_log->error("open file [%s] failed! [%s]",

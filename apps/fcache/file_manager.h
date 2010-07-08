@@ -31,6 +31,7 @@ public:
   ~file_manager()
   { }
 
+  //
   inline int insert(fileinfo_ptr &finfo)
   {
     std::pair<file_map_iter, bool> result = 
@@ -38,6 +39,7 @@ public:
     return result.second ? 0 : -1;
   }
 
+  //
   inline fileinfo_ptr find(const std::string &url)
   {
     file_map_iter pos = this->file_map_.find(url);
@@ -46,11 +48,13 @@ public:
     return pos->second;
   }
 
+  //
   inline void remove(const std::string &url)
   {
     this->file_map_.erase(url);
   }
 
+  //
   std::deque<std::string> get_all_urls()
   {
     std::deque<std::string> l;

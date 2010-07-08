@@ -30,6 +30,7 @@
 																				 dispatch_data_task.cpp  \
 																				 fcached.cpp  \
 																				 http_client.cpp  \
+																				 http_parser.cpp  \
 																				 mem_cache_transfer.cpp  \
 																				 reactor_event_handler.cpp  \
 																				 serial_file_transfer.cpp  \

@@ -60,7 +60,7 @@ public:
 
   int handle_data();
 
-  int response_client(int , int64_t = 0, int64_t = 0); 
+  int response_client(int , int64_t = 0, int64_t = 0, int64_t = 0); 
 
   void transfer_bytes(int64_t transfer_bytes)
   { this->transfer_bytes_ = transfer_bytes; }
