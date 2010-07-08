@@ -47,10 +47,10 @@ public:
   { this->filename_ = val; }
 
   //
-  inline uint64_t length()
+  inline int64_t length()
   { return this->length_; }
   //
-  inline void length(const uint64_t val)
+  inline void length(const int64_t val)
   { this->length_ = val; }
 
   //
@@ -84,6 +84,13 @@ public:
   //
   inline void file_handle(const ndk::ndk_handle val)
   { this->file_handle_ = val; }
+
+  //
+  inline int64_t e_pos()
+  { return this->e_pos_; }
+
+  inline void e_pos(const int64_t val)
+  { this->e_pos_ = val; }
 private:
   int fd_ref_count_;
   ndk::ndk_handle file_handle_;
@@ -91,7 +98,8 @@ private:
   time_t mtime_;
 
   // file length
-  uint64_t length_;
+  int64_t length_;
+  int64_t e_pos_;
 
   std::string url_;
 

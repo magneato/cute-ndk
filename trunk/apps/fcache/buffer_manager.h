@@ -14,6 +14,11 @@
 #include <ndk/thread_mutex.h>
 #include <cassert>
 
+/**
+ * @class buffer_manager
+ * 
+ * @brief
+ */
 class buffer_manager
 {
 public:
@@ -30,6 +35,7 @@ public:
 public:
   buffer_manager(size_t block_size)
   : block_size_(block_size),
+    n_alloced_(0),
     buffer_list_(0),
     free_buffer_list_(0)
   {
@@ -37,8 +43,7 @@ public:
   char *malloc()
   {
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
-    ++this->size_;
-    return new char[this->block_size()];
+    ++this->n_alloced_;
     if (this->buffer_list_ == 0)
     {
       this->buffer_list_ = this->alloc_item();
@@ -56,9 +61,7 @@ public:
   void free(char *p)
   {
     ndk::guard<ndk::thread_mutex> g(this->mutex_);
-    --this->size_;
-    delete []p;
-    return ;
+    --this->n_alloced_;
     assert(p != 0);
     buffer_item *item = this->alloc_item();
     item->buffer_ = p;
@@ -66,8 +69,28 @@ public:
     this->buffer_list_ = item;
   }
 
-  inline size_t malloc_bytes()
-  { return this->size_ * this->block_size_; }
+  void flush(size_t blocks = 0)
+  {
+    ndk::guard<ndk::thread_mutex> g(this->mutex_);
+    buffer_item *item = this->buffer_list_;
+    size_t count = 0;
+    while (item != 0)
+    {
+      buffer_item *p =  item;
+      item = item->next_;
+
+      delete []p->buffer_;
+      this->free_item(p);
+
+      ++count;
+      if (blocks > 0 && count == blocks) 
+        break;
+    }
+    this->buffer_list_ = item;
+  }
+
+  inline size_t alloc_blocks()
+  { return this->n_alloced_; }
 
   inline size_t block_size()
   { return this->block_size_; }
@@ -102,7 +125,7 @@ protected:
   }
 private:
   size_t block_size_;
-  size_t size_;
+  size_t n_alloced_;
   buffer_item *buffer_list_;
   buffer_item *free_buffer_list_;
   ndk::thread_mutex mutex_;

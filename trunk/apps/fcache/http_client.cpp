@@ -1,4 +1,5 @@
 #include "http_client.h"
+#include "http_parser.h"
 #include "http_session.h"
 #include "file_manager.h"
 #include "buffer_manager.h"
@@ -103,7 +104,7 @@ int http_client::open(void *)
   char addr[32] = {0};  // 
   this->remote_addr_.addr_to_string(addr, sizeof(addr));
   net_log->debug("new connection [%s][%d]", addr, this->peer().get_handle());
-  this->recv_buff_ = new ndk::message_block(1024*1024);
+  this->recv_buff_ = new ndk::message_block(1024*2);
   if (this->get_reactor() 
       && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                this, 
@@ -127,8 +128,7 @@ int http_client::open(void *)
 int http_client::handle_input(ndk::ndk_handle )
 {
   int result = this->peer().recv(this->recv_buff_->wr_ptr(),
-                                 this->recv_buff_->size() -
-                                 this->recv_buff_->length());
+                                 this->recv_buff_->space());
   if (result < 0)
   {
     if (errno == EWOULDBLOCK)
@@ -151,6 +151,17 @@ int http_client::handle_input(ndk::ndk_handle )
   }
 
   this->recv_buff_->wr_ptr(result);
+
+  if (this->recv_buff_->space() == 0)
+  {
+    ndk::message_block *mb = 
+      new ndk::message_block(this->recv_buff_->size() * 2);
+    std::memcpy(mb->data(), 
+                this->recv_buff_->data(), 
+                this->recv_buff_->length());
+    this->recv_buff_->release();
+    this->recv_buff_ = mb;
+  }
 
   return this->handle_data();
 }
@@ -200,29 +211,28 @@ int http_client::handle_data()
     uri_begin_p += sizeof("GET");
   else if (this->http_method_ == HTTP_HEAD)
     uri_begin_p += sizeof("HEAD");
-  char *uri_end_p = ::strstr(uri_begin_p, " HTTP/1.");
-  if (uri_end_p == 0)
+
+  char *uri_end_p = 0;
+  uri_begin_p = http_parser::get_uri(uri_begin_p, &uri_end_p);
+  if (uri_begin_p == 0)
   {
-    this->session_desc_ = "Not found 'HTTP/1.x'";
+    this->session_desc_ = "Parse uri failed";
     this->response_client(400);
     return -1;
   }
-  char *host_p = ::strstr(uri_end_p, "Host: ");
+
+  char *host_p_end = 0;
+  char *host_p = http_parser::get_value(uri_end_p,
+                                        "Host",
+                                        4,
+                                        &host_p_end);
   if (host_p == 0)
   {
     this->session_desc_ = "Not found 'Host' header";
     this->response_client(400);
     return -1;
   }
-  char *host_p_end = ::strstr(host_p + sizeof("Host:"), "\r\n");
-  if (host_p_end == 0)
-  {
-    this->session_desc_ = "Not found '\\r\\n' after 'Host'";
-    this->response_client(400);
-    return -1;
-  }
-  std::string host(host_p + sizeof("Host:"),
-                   host_p_end - (host_p + sizeof("Host:")));
+  std::string host(host_p, host_p_end);
   if (host.find(':') == std::string::npos)
   {
     std::ostringstream ostr;
@@ -263,7 +273,7 @@ int http_client::handle_data()
     }
   }
 
-  this->uri_.assign(uri_begin_p, uri_end_p - uri_begin_p);
+  this->uri_.assign(uri_begin_p, uri_end_p);
   if (this->uri_.length() == 1)
   {
     this->show_status();
@@ -358,7 +368,7 @@ int http_client::handle_data()
     }
   }
   if (partial == 1)
-    result = this->response_client(206, start_pos, end_pos);
+    result = this->response_client(206, start_pos, end_pos, fileinfo->length());
   else
     result = this->response_client(200, start_pos, end_pos);
   if (result != -1)
@@ -386,7 +396,8 @@ int http_client::handle_data()
 }
 int http_client::response_client(int status,
                                  int64_t start_pos/* = 0*/,
-                                 int64_t end_pos/* = 0*/)
+                                 int64_t end_pos/* = 0*/,
+                                 int64_t file_size/* = 0*/)
 {
   this->response_code_ = status;
   std::ostringstream os;
@@ -428,7 +439,7 @@ int http_client::response_client(int status,
         << "-" 
         << end_pos 
         << "/" 
-        << end_pos - start_pos + 1 
+        << file_size
         << "\r\n";
     }
   }else
@@ -496,12 +507,14 @@ int http_client::show_status()
     << std::setw(hit_disk_w) << g_hit_disk
     << std::setw(payload_w) << g_payload
     << std::setw(cache_mem_used_w) << g_cache_mem_used/1024/1024
-    << std::setw(aio_mem_used_w) << file_io_cache_mgr->malloc_bytes()/1024/1024
+    << std::setw(aio_mem_used_w) << file_io_cache_mgr->alloc_blocks()
     << std::endl << std::endl;
+#if 0
   std::deque<std::string> l = file_manager::instance()->get_all_urls();
   std::deque<std::string>::iterator lp;
   for (lp = l.begin(); lp != l.end(); ++lp)
     ostr << *lp << std::endl;
+#endif
 
   std::ostringstream os;
   os << "HTTP/1.0 200 OK\r\n"

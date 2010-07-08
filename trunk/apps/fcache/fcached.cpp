@@ -56,6 +56,7 @@ static void guard_log(const char *format, ...)
 }
 void dump(int )
 {
+  file_io_cache_mgr->flush();
   g_aio_task[0]->dump();
 }
 void sig_handle()
