@@ -76,7 +76,7 @@ public:
     size_t count = 0;
     while (item != 0)
     {
-      buffer_item *p =  item;
+      buffer_item *p = item;
       item = item->next_;
 
       delete []p->buffer_;
@@ -121,7 +121,7 @@ protected:
   void free_item(buffer_item *item)
   {
     item->next_ = this->free_buffer_list_;
-    this->free_buffer_list_ = item->next_;
+    this->free_buffer_list_ = item;
   }
 private:
   size_t block_size_;
