@@ -496,7 +496,7 @@ int http_client::show_status()
     << std::setw(aio_mem_used_w) << aio_mem_used
     << std::endl;
   int h_c_rate  = 0;
-  if (g_finished > 0)
+  if (g_finished > 0 && g_hit_cache > 0)
     h_c_rate = int((g_hit_cache * 100) / g_cache_file_requests);
   ostr << std::setw(requests_w) << g_requests
     << std::setw(finished_w) << g_finished
@@ -506,7 +506,8 @@ int http_client::show_status()
     << std::setw(hit_c_rate_w) << h_c_rate
     << std::setw(hit_disk_w) << g_hit_disk
     << std::setw(payload_w) << g_payload
-    << std::setw(cache_mem_used_w) << g_cache_mem_used/1024/1024
+    << std::setw(cache_mem_used_w) << (g_cache_mem_used > 0 ? 
+    g_cache_mem_used/1024/1024 : g_cache_mem_used)
     << std::setw(aio_mem_used_w) << file_io_cache_mgr->alloc_blocks()
     << std::endl << std::endl;
 #if 0

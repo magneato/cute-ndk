@@ -1,5 +1,6 @@
 #include "serial_file_transfer.h"
 #include "buffer_manager.h"
+#include "file_manager.h"
 
 #include <ndk/logger.h>
 
@@ -62,6 +63,8 @@ int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
       file_io_log->error("open file [%s] failed! [%s]",
                          fileinfo->filename().c_str(),
                          strerror(errno));
+      if (errno == ENOENT)
+        file_manager::instance()->remove(fileinfo->url());
       return -1;
     }
     this->fileinfo_->file_handle(this->handle_);
