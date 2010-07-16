@@ -11,7 +11,7 @@
 #define NDK_TASK_H_
 
 #include "ndk/task_base.h"
-#include "message_queue.h"
+#include "ndk/message_queue.h"
 
 namespace ndk
 {
