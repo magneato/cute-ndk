@@ -21,7 +21,6 @@ namespace ndk
 {
   class thread
   {
-    friend class thread_manager;
   public:
     enum
     {	
@@ -49,7 +48,7 @@ namespace ndk
 
     // test the cancel
     static void testcancel(void);
-protected:
+
     // create a thread
     // return : 0, success , -1 failed
     static int spawn(thread_func_t func, 

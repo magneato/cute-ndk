@@ -12,6 +12,8 @@
 
 #include <ndk/task.h>
 
+#include <deque>
+
 #include "http_client.h"
 #include "transfer_agent.h"
 
