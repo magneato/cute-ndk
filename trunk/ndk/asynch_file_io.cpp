@@ -1,5 +1,9 @@
 #include "ndk/asynch_file_io.h"
 
+#include <limits.h>
+#include <cassert>
+#include <unistd.h>
+
 namespace ndk
 {
 void aio_opt_t::reset()

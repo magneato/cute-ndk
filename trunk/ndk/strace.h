@@ -11,6 +11,7 @@
 #define NDK_STRACE_H_
 
 #include <cstdio>
+#include <stdint.h>
 #include <cstring>
 
 #include "ndk/guard.h"
@@ -80,7 +81,7 @@ namespace ndk
     const  char*  file_;
     const  char*  func_;
 
-    static size_t count_;
+    static unsigned int count_;
     char          log_time_[32];
     char          spaces_[128];
     date_time     current_dtime_;

@@ -141,9 +141,9 @@ namespace ndk
             int prealloc_slab_num = 128,
             int max_slabs = 1024/*1G*/);
 
-   void *malloc(size_t size);
+   void *malloc(unsigned int size);
 
-   void *alloc(size_t size);
+   void *alloc(unsigned int size);
 
    void free(void *);
 
@@ -165,7 +165,7 @@ namespace ndk
 
      // Size of the memory pass to application(not include 
      // sizeof(obj_header) 
-     size_t size_;
+     unsigned int size_;
 
      // The slab which this memory object places.
      slab_header *slab_;
@@ -178,10 +178,10 @@ namespace ndk
 
 #if defined(MALLOC_ALIGN)
      // For align
-     char align[MALLOC_ROUNDUP(sizeof(int) + sizeof(size_t) + \
+     char align[MALLOC_ROUNDUP(sizeof(int) + sizeof(unsigned int) + \
                                sizeof(slab_header *) + sizeof(obj_header *) * 2, \
                                MALLOC_ALIGN) \
-       - (sizeof(int) + sizeof(size_t) + sizeof(slab_header *) \
+       - (sizeof(int) + sizeof(unsigned int) + sizeof(slab_header *) \
           + sizeof(obj_header *) * 2)];
 #endif
    };
@@ -194,17 +194,17 @@ namespace ndk
    class slab_header
    {
    public:
-     slab_header(size_t slab_size);
+     slab_header(unsigned int slab_size);
    public:
      // Num of objects active in slab
-     size_t inuse_objs_;
+     unsigned int inuse_objs_;
 
 #ifdef DUMP_INFO
      // The size of free memory actually in this slab(maybe not seriate).
-     size_t usable_size_;
+     unsigned int usable_size_;
 #endif
      // Max size of seriate object in this slab.
-     size_t max_seriate_size_;
+     unsigned int max_seriate_size_;
 
      obj_header *head_;
 
@@ -216,25 +216,25 @@ namespace ndk
      slab_header *next_;
    };
 
-   void init_object(void *, slab_header *slab, size_t size);
+   void init_object(void *, slab_header *slab, unsigned int size);
 
-   slab_header *alloc_slabs(size_t count);
+   slab_header *alloc_slabs(unsigned int count);
 
-   slab_header *find_usable_slab(size_t size);
+   slab_header *find_usable_slab(unsigned int size);
 
-   void ajust_slab_order(slab_header *slab, size_t alloc_size);
+   void ajust_slab_order(slab_header *slab, unsigned int alloc_size);
 
-   obj_header *pop_usable_object(slab_header *slab, size_t alloc_size);
+   obj_header *pop_usable_object(slab_header *slab, unsigned int alloc_size);
  private:
    // = Config
-   size_t slab_size_;
+   unsigned int slab_size_;
 
-   size_t prealloc_slab_num_;
+   unsigned int prealloc_slab_num_;
 
-   size_t max_slabs_;
+   unsigned int max_slabs_;
 
    // Current alloced slabs
-   size_t alloced_slabs_;
+   unsigned int alloced_slabs_;
 
    // = List of slabs.
    slab_header *slabs_head_;

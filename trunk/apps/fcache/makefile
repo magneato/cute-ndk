@@ -18,7 +18,7 @@
                             CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make
                                 LINKER = g++
-                          INCLUDE_DIRS = -I../../
+                          INCLUDE_DIRS = -I../../ -I /home/cuisw/libs/boost_1_43_0
                                   LIBS = -lpthread -lnetdkit
                             OPTIM_FLAG = -O2
                                    CPP = g++

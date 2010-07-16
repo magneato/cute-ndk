@@ -82,6 +82,21 @@ http_client::~http_client()
   char addr[32] = {0};  // 
   this->remote_addr_.get_host_addr(addr, sizeof(addr));
   char log[1024] = {0};
+#if __WORDSIZE == 64
+  int len = ::snprintf(log, sizeof(log),
+                       "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d %ld %ld \"%s\"\n",
+                       st,
+                       tv_s.msec(),
+                       et,
+                       tv_e.msec(),
+                       addr,
+                       HTTP_METHOD[this->http_method_],
+                       this->uri_.c_str(),
+                       this->response_code_,
+                       this->content_length_,
+                       this->transfer_bytes_,
+                       this->session_desc_.c_str());
+#else
   int len = ::snprintf(log, sizeof(log),
                        "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d %lld %lld \"%s\"\n",
                        st,
@@ -95,9 +110,9 @@ http_client::~http_client()
                        this->content_length_,
                        this->transfer_bytes_,
                        this->session_desc_.c_str());
+#endif
 
   access_log->puts(log, len);
-
 }
 int http_client::open(void *)
 {
@@ -334,8 +349,8 @@ int http_client::handle_data()
 
   int result = 0;
   transfer_agent *trans_agent = 0;
-  if (fileinfo->length() <= g_max_mem_cache_size 
-      && fileinfo->length() >= g_min_mem_cache_size)
+  if (fileinfo->length() <= (int64_t)g_max_mem_cache_size 
+      && fileinfo->length() >= (int64_t)g_min_mem_cache_size)
   {
     ++g_cache_file_requests;
     trans_agent = new mem_cache_transfer(start_pos, this->content_length_);

@@ -30,10 +30,10 @@
 																				 asynch_file_io.cpp  \
                                          logger.cpp  \
                                          cache_manager.cpp  \
+																				 mem_pool.cpp  \
                                          timer_queue.cpp  \
                                          thread.cpp  \
-                                         thread_manager.cpp  \
-                                         mem_pool.cpp  \
+																				 thread_manager.cpp  \
                                          time_value.cpp  \
 																				 inet_addr.cpp  \
                                          log_to_file.cpp  \
