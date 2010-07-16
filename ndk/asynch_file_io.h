@@ -184,7 +184,15 @@ namespace ndk
 
     int find_in_running_list(ndk::ndk_handle handle);
 
-    aio_opt_t *alloc_aio_opt();
+    aio_opt_t *alloc_aio_opt()
+    {
+      ndk::guard<ndk::thread_mutex> g(this->free_list_mtx_);
+      if (this->queue_list_size_ > this->max_request_queue_size_)
+        return 0;
+      aio_opt_t *aioopt = this->alloc_aio_opt_i(this->free_list_);
+      ++this->queue_list_size_;
+      return aioopt;
+    }
 
     aio_opt_t *alloc_aio_opt_i(aio_opt_t *&aio_list)
     {
@@ -207,7 +215,11 @@ namespace ndk
     inline void free_aio_opt_n(aio_opt_t *p);
 
     //
-    void free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list);
+    void free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list)
+    {
+      p->next_ = aio_list;
+      aio_list = p;
+    }
   protected:
     int id_itor_;
     int fd_pool_size_;
