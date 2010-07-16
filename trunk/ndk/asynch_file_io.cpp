@@ -169,37 +169,6 @@ int asynch_file_io::start_aio(ndk::ndk_handle handle,
       }
     }
   }
-  
-#if 0
-  // for debug
-  aio_opt_t *p = this->queue_list_;
-  int found = 0;
-  for ( ; p != 0; p = p->next_)
-  {
-    if (id == p->id_)
-    {
-      found = 1;
-      break;
-    }else
-    {
-      if (p->header_)
-      {
-        aio_opt_t *pp = p->header_;
-        for (; pp != 0; pp = pp->next_)
-        {
-          if (pp->id_ == id)
-          {
-            found = 1;
-            break;
-          }
-        }
-      }
-    }
-  }
-  assert (this->queue_list_ != 0);
-  assert (found == 1);
-  // end
-#endif
 
   this->not_empty_cond_.signal(); //
 
@@ -460,15 +429,6 @@ int asynch_file_io::find_in_running_list(int id)
     if (itor->ptr_->id_ == id) return -1;
   return 0;
 }
-aio_opt_t *asynch_file_io::alloc_aio_opt()
-{
-  ndk::guard<ndk::thread_mutex> g(this->free_list_mtx_);
-  if (this->queue_list_size_ > this->max_request_queue_size_)
-    return 0;
-  aio_opt_t *aioopt = this->alloc_aio_opt_i(this->free_list_);
-  ++this->queue_list_size_;
-  return aioopt;
-}
 void asynch_file_io::free_aio_opt_n(aio_opt_t *p)
 {
   ndk::guard<ndk::thread_mutex> g(this->free_list_mtx_);
@@ -481,11 +441,6 @@ void asynch_file_io::free_aio_opt_n(aio_opt_t *p)
   }
   tail->next_ = this->free_list_;
   this->free_list_ = p;
-}
-void asynch_file_io::free_aio_opt_i(aio_opt_t *p, aio_opt_t *&aio_list)
-{
-  p->next_ = aio_list;
-  aio_list = p;
 }
 #ifdef NDK_DUMP
 void asynch_file_io::dump()
