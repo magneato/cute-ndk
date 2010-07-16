@@ -8,7 +8,7 @@ char *http_parser::get_value(const char *header,
                              size_t key_len,
                              char **v_end)
 {
-  char *key_p = ::strstr(header, key);
+  char *key_p = ::strstr(const_cast<char *>(header), key);
   if (key_p == 0) return 0;
   key_p = ::strchr(key_p + key_len, ':');
   if (key_p == 0 || *(key_p + 1) == '\r') return 0;

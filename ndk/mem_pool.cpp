@@ -17,7 +17,7 @@ mem_pool::obj_header::obj_header()
   next_(0)
 {
 }
-mem_pool::slab_header::slab_header(size_t slab_size)
+mem_pool::slab_header::slab_header(unsigned int slab_size)
   : inuse_objs_(0),
 #ifdef DUMP_INFO
   usable_size_(slab_size),
@@ -73,12 +73,12 @@ int mem_pool::init(int slab_size/* = 1024 * 1024*/,
 
   return 0;
 }
-mem_pool::slab_header *mem_pool::alloc_slabs(size_t count)
+mem_pool::slab_header *mem_pool::alloc_slabs(unsigned int count)
 {
   if (this->alloced_slabs_ >= this->max_slabs_)
     return 0;
   slab_header *ret_val = 0;
-  for (size_t i = 0; i < count; ++i)
+  for (unsigned int i = 0; i < count; ++i)
   {
     void *memory = ::new char[this->slab_size_ + sizeof(obj_header)];
     if (memory)
@@ -123,13 +123,13 @@ mem_pool::slab_header *mem_pool::alloc_slabs(size_t count)
     // Error.
     fprintf(stderr, "Prealloc memory slabs failed, "
             "slab size = %d, index = %d\n", 
-            this->slab_size_ + sizeof(obj_header), 
+            this->slab_size_ + static_cast<unsigned int>(sizeof(obj_header)), 
             i);
     break;
   }
   return ret_val;
 }
-void mem_pool::init_object(void *memory, slab_header *slab, size_t size)
+void mem_pool::init_object(void *memory, slab_header *slab, unsigned int size)
 {
   obj_header *oh = reinterpret_cast<obj_header *>(memory);
   oh->size_ = size;
@@ -137,7 +137,7 @@ void mem_pool::init_object(void *memory, slab_header *slab, size_t size)
   oh->prev_ = 0;
   oh->next_ = 0;
 }
-void *mem_pool::malloc(size_t size)
+void *mem_pool::malloc(unsigned int size)
 {
   //return ::malloc(size);
   if (size > this->slab_size_) return 0;
@@ -169,7 +169,7 @@ void *mem_pool::malloc(size_t size)
   this->mutex_.release();
   return reinterpret_cast<void *>(usable_object + 1);
 }
-mem_pool::slab_header *mem_pool::find_usable_slab(size_t size)
+mem_pool::slab_header *mem_pool::find_usable_slab(unsigned int size)
 {
   slab_header *slab = this->slabs_head_;
   while (slab)
@@ -181,7 +181,7 @@ mem_pool::slab_header *mem_pool::find_usable_slab(size_t size)
   }
   return 0;
 }
-void mem_pool::ajust_slab_order(slab_header *slab, size_t order_type)
+void mem_pool::ajust_slab_order(slab_header *slab, unsigned int order_type)
 {
   if (order_type == ORDER_BY_AHEAD)
   {
@@ -255,7 +255,7 @@ void mem_pool::ajust_slab_order(slab_header *slab, size_t order_type)
   return ;
 }
 mem_pool::obj_header *mem_pool::pop_usable_object(slab_header *slab, 
-                                                  size_t alloc_size)
+                                                  unsigned int alloc_size)
 {
   slab->max_seriate_size_ -= alloc_size;
   obj_header *free_obj = slab->max_seriate_free_head_;

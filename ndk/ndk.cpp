@@ -12,6 +12,9 @@
 #  include <cstring>
 #  include <sys/select.h>
 #  include <sys/resource.h>                          
+#  include <sys/types.h>
+#  include <sys/stat.h>
+
 #elif defined NDK_WIN32   
 
 #endif
@@ -689,7 +692,7 @@ int ndk::bind_port(ndk_handle handle,
                    int addr_family)
 {
   inet_addr addr;
-  addr.set(0, ip_addr);
+  addr.set((unsigned short)0, ip_addr);
   unused_args(addr_family);
   unsigned short upper_limit = MAX_DEFAULT_PORT;
   // We have to select the port explicitly.

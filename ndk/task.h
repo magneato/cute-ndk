@@ -24,7 +24,7 @@ namespace ndk
   {
   public:
     /**
-     * Initialize a task, supplying a thread manager and a message
+     * Initialize a task, supplying a thread_manager and a message
      * queue.  If the user doesn't supply a message_queue pointer
      * then we'll allocate one dynamically.  Otherwise, we'll use the
      * one passed as a parameter.
