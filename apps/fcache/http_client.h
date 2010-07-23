@@ -69,6 +69,10 @@ public:
   { this->session_desc_ = desc; }
 
   int show_status();
+
+protected:
+  int get_range(const char *, int64_t &, int64_t &);
+
 protected:
   int session_id_;
   int dispatch_data_task_idx_;

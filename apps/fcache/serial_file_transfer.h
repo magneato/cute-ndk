@@ -45,7 +45,7 @@ protected:
   
   int aio_id_;
 
-  //volatile int aio_inprogress_;
+  // volatile int aio_inprogress_;
   volatile int eof_;
   volatile int file_io_error_;
   volatile int cancel_pendding_;
