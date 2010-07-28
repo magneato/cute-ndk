@@ -11,42 +11,29 @@
 ###########################################################################
 
                                BIN_DIR = ./bin
-                                TARGET = $(BIN_DIR)/libnetdkit.so.2.0
+                                TARGET = $(BIN_DIR)/fcached
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                 MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DNDK_DUMP#-DNDK_STRACE
                                     CC = gcc
                             CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make
                                 LINKER = g++
-                          INCLUDE_DIRS = -I .
-                                  LIBS = -lpthread
+                          INCLUDE_DIRS = -I../../ -I /home/cuisw/libs/boost_1_43_0
+                                  LIBS = -lpthread -lnetdkit
                             OPTIM_FLAG = -O2
                                    CPP = g++
-                                LFLAGS = -Wl -shared -fPIC
+                                LFLAGS = -Wall -L../../bin
                               LIB_DIRS =
-                                 VPATH = ndk
+                                 VPATH = 
                             OBJECT_DIR = ./.obj/
                               CPPFILES = \
-																				 asynch_file_io.cpp  \
-                                         logger.cpp  \
-                                         cache_manager.cpp  \
-                                         timer_queue.cpp  \
-                                         thread.cpp  \
-                                         time_value.cpp  \
-																				 inet_addr.cpp  \
-                                         log_to_file.cpp  \
-                                         log_manager.cpp  \
-                                         message_queue.cpp  \
-                                         unix_reactor.cpp  \
-                                         select_reactor.cpp  \
-                                         strace.cpp  \
-                                         epoll_reactor.cpp  \
-                                         ndk.cpp  \
-                                         token.cpp   
-
-                                CFILES = \
-                                         iniparser.c  \
-                                         dictionary.c   
+																				 dispatch_data_task.cpp  \
+																				 fcached.cpp  \
+																				 http_client.cpp  \
+																				 http_parser.cpp  \
+																				 mem_cache_transfer.cpp  \
+																				 reactor_event_handler.cpp  \
+																				 serial_file_transfer.cpp  \
 
 # To use 'make debug=0' build release edition.
 ifdef debug
@@ -89,7 +76,6 @@ all: checkdir $(TARGET)
 
 $(TARGET): $(OBJECTS)
 	$(Q)$(LINKER) $(strip $(LFLAGS)) -o $@ $(OBJECTS)
-	@ln -sf $(notdir $(TARGET)) $(BIN_DIR)/libnetdkit.so
 
 $(OBJECT_DIR)%.o:%.cpp
 	$(Q)$(CPP) $(strip $(CPPALL_CFLAGS)) -c $< -o $@
