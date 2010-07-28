@@ -219,7 +219,7 @@ namespace ndk
       this->time_ = ::mktime(&this->tm_); 
       return this->time_;
     }
-	// convert str to datetime. "2008-12-12"
+    // convert str to datetime. "2008-12-12"
     inline time_t str_to_date(const char *str)
     {
       if (str == 0) return 0;
