@@ -191,13 +191,18 @@ public:
   }
   virtual int open(void *arg)
   {
-    this->recv_buff_ = new ndk::message_block(4096);
+    if (this->recv_buff_ == 0)
+      this->recv_buff_ = new ndk::message_block(4096);
     this->connect_ok_ = 1;
     this->begin_time_ = ::time(0);
     if (this->get_reactor() 
         && this->get_reactor()->register_handler(this, 
                                                  event_handler::read_mask) == -1)
+    {
+      net_log->error("register handler failed! [%s]"
+                     , strerror(errno));
       return -1;
+    }
     std::string msg;
     this->build_msg(msg);
     if (this->peer().send(msg.c_str(), msg.length()) < 0)
