@@ -261,12 +261,15 @@ namespace ndk
       // all of sockets create by framwork is nonblocked.
       new_stream.set_nonblock();
 
-      sockaddr *laddr = reinterpret_cast<sockaddr *>(local_addr.get_addr());
-      int size = local_addr.get_addr_size();
-      if (::bind(new_stream.get_handle(), laddr, size) == -1)
+      if (local_addr != inet_addr::addr_any)
       {
-        new_stream.close();
-        return -1;
+        sockaddr *laddr = reinterpret_cast<sockaddr *>(local_addr.get_addr());
+        int size = local_addr.get_addr_size();
+        if (::bind(new_stream.get_handle(), laddr, size) == -1)
+        {
+          new_stream.close();
+          return -1;
+        }
       }
 
       if (recvbuf_size != 0 &&
