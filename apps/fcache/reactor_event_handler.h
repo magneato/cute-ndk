@@ -13,8 +13,6 @@
 #include <ndk/event_handler.h>
 #include <ndk/singleton.h>
 
-#include "http_sessionmgr.h"
-
 /**
  * @brief notify event class
  */

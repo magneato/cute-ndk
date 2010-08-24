@@ -22,10 +22,10 @@
 class serial_file_transfer : public transfer_agent, ndk::asynch_handler
 {
 public:
-  serial_file_transfer(uint64_t start_pos,
-                       uint64_t bytes_to_transfer);
+  serial_file_transfer(int64_t start_pos,
+                       int64_t bytes_to_transfer);
 
-  virtual int open(const fileinfo_ptr &fileinfo);
+  virtual int open(const file_info_ptr &fileinfo);
 
   virtual ~serial_file_transfer();
 
@@ -34,6 +34,10 @@ public:
                             int &transfer_bytes);
 
   virtual void handle_aio_read(const ndk::aio_opt_t *aio_result);
+
+  virtual void start_transfer() {} ;
+
+  virtual void stop_transfer() {} ;
 
   virtual int close();
 protected:
@@ -54,17 +58,17 @@ protected:
   size_t buffer_size_;
   size_t reserve_buffer_size_;
 
-  uint64_t offset_;
-  uint64_t content_length_;
-  uint64_t start_pos_;
-  uint64_t transfer_bytes_;
+  int64_t offset_;
+  int64_t content_length_;
+  int64_t begin_pos_;
+  int64_t transfer_bytes_;
 
   char *buffer_;
   // used for prefetch data.
   char *reserve_buffer_;
 
   //
-  fileinfo_ptr fileinfo_;
+  file_info_ptr fileinfo_;
 
   ndk::thread_mutex buffer_mtx_;
 };

@@ -23,6 +23,7 @@
  */
 class http_client : public ndk::svc_handler
 {
+public:
   enum
   {
     HTTP_UNKNOW, 
@@ -58,21 +59,35 @@ public:
 
   virtual int handle_close(ndk::ndk_handle , ndk::reactor_mask m);
 
-  int handle_data();
+  int response_to_client(int , int64_t = 0, int64_t = 0, int64_t = 0, time_t = 0); 
 
-  int response_client(int , int64_t = 0, int64_t = 0, int64_t = 0); 
+  void transfer_bytes(int64_t bytes)
+  { this->transfer_bytes_ = bytes; }
 
-  void transfer_bytes(int64_t transfer_bytes)
-  { this->transfer_bytes_ = transfer_bytes; }
-
-  void transfer_error(const std::string &desc)
+  void session_desc(const std::string &desc)
   { this->session_desc_ = desc; }
 
-  int show_status();
+  int http_method()
+  { return this->http_method_; }
+
+  void show_status();
 
 protected:
+  int handle_data();
+
   int get_range(const char *, int64_t &, int64_t &);
 
+  int handle_request(const char *http_header);
+
+  char *gmttime_to_str(time_t now, char *str, size_t len);
+
+  int check_modified(const char *http_header,
+                     const time_t last_modified_time,
+                     const std::string &etag);
+
+  int parse_params(const char *param_p,
+                   int &bandwidth,
+                   std::string &url);
 protected:
   int session_id_;
   int dispatch_data_task_idx_;

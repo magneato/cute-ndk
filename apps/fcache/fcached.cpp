@@ -13,6 +13,7 @@
 #include <ndk/logger.h>
 #include <ndk/reactor.h>
 #include <ndk/acceptor.h>
+#include <ndk/connector.h>
 #include <ndk/date_time.h>
 #include <ndk/inet_addr.h>
 #include <ndk/cache_manager.h>
@@ -23,6 +24,11 @@
 #include <unistd.h>
 #include <sys/wait.h>
 
+#ifdef DUMP_INFO
+# include "pipe_buffer.h"
+#endif
+
+#include "pull_agent.h"
 #include "http_client.h"
 #include "buffer_manager.h"
 #include "dispatch_data_task.h"
@@ -54,15 +60,21 @@ static void guard_log(const char *format, ...)
   vfprintf(fp, format, argptr);
   fclose(fp);
 }
+#ifdef DUMP_INFO
 void dump(int )
 {
   file_io_cache_mgr->flush();
   g_cache_manager->flush_all();
   g_aio_task[0]->dump();
+
+  pipe_buffer::dump();
 }
+#endif
 void sig_handle()
 {
+#ifdef DUMP_INFO
   signal(SIGHUP,  dump);
+#endif
   signal(SIGPIPE, SIG_IGN);
   signal(SIGINT,  SIG_IGN);
 }
@@ -137,6 +149,7 @@ static const char *compile_time = __TIME__;
 
 // accept http socket connection.
 ndk::acceptor<http_client> *g_http_acceptor;
+ndk::connector<pull_agent> *g_connector;
 
 void print_usage()
 {
@@ -291,6 +304,10 @@ int main(int argc, char *argv[])
     main_log->error("open acceptor failed");
     return -1;
   }
+  //
+  g_connector = new ndk::connector<pull_agent>();
+  g_connector->open(ndk::reactor::instance());
+
   g_cache_manager = 
     new ndk::cache_manager<std::string, ndk::thread_mutex>(g_min_mem_cache_size,
                                                            g_max_mem_cache_size,

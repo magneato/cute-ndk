@@ -19,11 +19,14 @@ char *http_parser::get_value(const char *header,
   size_t len = ::strcspn(key_p, "\r\n");
   if (len == 0) return 0;
 
-  *v_end = key_p + len;
+  if (v_end != 0)
+  {
+    *v_end = key_p + len;
 
-  while (*v_end > key_p && isspace(**v_end))
-    --(*v_end);
-  ++(*v_end);
+    while (*v_end > key_p && isspace(**v_end))
+      --(*v_end);
+    ++(*v_end);
+  }
   return key_p;
 }
 char *http_parser::get_uri(const char *uri_begin,

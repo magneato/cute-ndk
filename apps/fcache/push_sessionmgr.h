@@ -7,30 +7,29 @@
  */
 //========================================================================
 
-#ifndef HTTP_SESSIONMGR_H_
-#define HTTP_SESSIONMGR_H_
+#ifndef PUSH_SESSIONMGR_H_
+#define PUSH_SESSIONMGR_H_
 
-#include <ndk/event_handler.h>
 #include <ndk/singleton.h>
 
 #include <map>
 
-#include "http_session.h"
+#include "push_session.h"
 
 /**
- * @class http_sessionmgr
+ * @class push_sessionmgr
  *
  * @brief http sessionmgr
  */
-class http_sessionmgr : public ndk::singleton<http_sessionmgr>
+class push_sessionmgr : public ndk::singleton<push_sessionmgr>
 {
 public:
-  http_sessionmgr()
+  push_sessionmgr()
   : session_ids_(0)
   { }
 
   // return session id.
-  inline int insert(http_session *hs)
+  inline int insert(push_session_ptr &hs)
   {
     std::pair<session_list_itor, bool> ret = 
       this->session_list_.insert(std::make_pair(hs->session_id(),
@@ -39,28 +38,38 @@ public:
     return ret.second ? 0 : -1;
   }
 
-  inline http_session *find(int sid)
+  inline push_session_ptr find(int sid)
   {
-    if (sid < 0) return 0;
+    if (sid < 0) return push_session_ptr();
     session_list_itor itor = this->session_list_.find(sid);
     if (itor == this->session_list_.end())
-      return 0;
+      return push_session_ptr();
     return itor->second;
   }
 
-  inline http_session *remove(int sid)
+  inline int remove(int sid)
   {
     session_list_itor itor = this->session_list_.find(sid);
     if (itor == this->session_list_.end())
-      return 0;
-    http_session *hs = itor->second;
+      return -1;
     this->session_list_.erase(itor);
-    return hs;
+    return 0;
+  }
+
+  inline int release(int sid)
+  {
+    session_list_itor itor = this->session_list_.find(sid);
+    if (itor == this->session_list_.end())
+      return -1;
+    //
+    itor->second->release();
+    this->session_list_.erase(itor);
+    return 0;
   }
 
   inline int alloc_sessionid()
   {
-    return this->session_ids_++;
+    return this->session_ids_ += 2;
   }
 
   inline size_t size()
@@ -70,10 +79,10 @@ public:
 private:
   int session_ids_;
 
-  typedef std::map<int, http_session *> session_list_t;
-  typedef std::map<int, http_session *>::iterator session_list_itor;
+  typedef std::map<int, push_session_ptr> session_list_t;
+  typedef std::map<int, push_session_ptr>::iterator session_list_itor;
   session_list_t session_list_;
 };
 
-#endif // HTTP_SESSIONMGR_H_ 
+#endif // PUSH_SESSIONMGR_H_ 
 

@@ -1,12 +1,16 @@
+#include "errno.h"
+#include "predefined.h"
 #include "http_client.h"
 #include "http_parser.h"
-#include "http_session.h"
+#include "push_session.h"
 #include "file_manager.h"
 #include "buffer_manager.h"
-#include "http_sessionmgr.h"
+#include "push_sessionmgr.h"
+#include "handle_pull_file.h"
 #include "dispatch_data_task.h"
 #include "mem_cache_transfer.h"
 #include "serial_file_transfer.h"
+#include "handle_start_transfer_data.h"
 
 #include <ndk/logger.h>
 #include <ndk/cache_manager.h>
@@ -56,10 +60,8 @@ http_client::~http_client()
   {
     --g_payload;
     g_dispatch_data_task[this->dispatch_data_task_idx_].delete_client(this->session_id_);
-    http_session *hs = 
-      http_sessionmgr::instance()->remove(this->session_id_);
-    if (hs) delete hs;
-    net_log->debug("remove sessionid %d", this->session_id_);
+    push_sessionmgr::instance()->release(this->session_id_);
+    net_log->trace("remove sessionid %d", this->session_id_);
     this->session_id_ = -1;
   }
   if (this->recv_buff_)
@@ -83,22 +85,14 @@ http_client::~http_client()
   this->remote_addr_.get_host_addr(addr, sizeof(addr));
   char log[1024] = {0};
 #if __WORDSIZE == 64
-  int len = ::snprintf(log, sizeof(log),
-                       "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d %ld %ld \"%s\"\n",
-                       st,
-                       tv_s.msec(),
-                       et,
-                       tv_e.msec(),
-                       addr,
-                       HTTP_METHOD[this->http_method_],
-                       this->uri_.c_str(),
-                       this->response_code_,
-                       this->content_length_,
-                       this->transfer_bytes_,
-                       this->session_desc_.c_str());
+# define  INT64_P_FMT "%ld"
 #else
+# define  INT64_P_FMT "%lld"
+#endif
   int len = ::snprintf(log, sizeof(log),
-                       "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d %lld %lld \"%s\"\n",
+                       "\"%s.%03lu\" \"%s.%03lu\" %s %s %s %d "
+                       INT64_P_FMT " " INT64_P_FMT
+                       " \"%s\"\n",
                        st,
                        tv_s.msec(),
                        et,
@@ -110,7 +104,6 @@ http_client::~http_client()
                        this->content_length_,
                        this->transfer_bytes_,
                        this->session_desc_.c_str());
-#endif
 
   access_log->puts(log, len);
 }
@@ -118,15 +111,15 @@ int http_client::open(void *)
 {
   char addr[32] = {0};  // 
   this->remote_addr_.addr_to_string(addr, sizeof(addr));
-  net_log->debug("new connection [%s][%d]", addr, this->peer().get_handle());
-  this->recv_buff_ = new ndk::message_block(1024*2);
+  net_log->trace("new connection [%s][%d]", addr, this->peer().get_handle());
+  this->recv_buff_ = new ndk::message_block(1024*4);
   if (this->get_reactor() 
       && this->get_reactor()->register_handler(this->peer().get_handle(),
                                                this, 
                                                event_handler::read_mask) == -1)
   {
     net_log->error("[%d] register readable mask to reactor failed! [%s]", 
-                   this->get_handle(),
+                   this->peer().get_handle(),
                    strerror(errno));
     return -1;
   }
@@ -140,7 +133,7 @@ int http_client::open(void *)
   assert(this->timer_id_ != -1);
   return this->timer_id_ == -1 ? -1 : 0;
 }
-int http_client::handle_input(ndk::ndk_handle )
+int http_client::handle_input(ndk::ndk_handle h)
 {
   int result = this->peer().recv(this->recv_buff_->wr_ptr(),
                                  this->recv_buff_->space());
@@ -148,12 +141,14 @@ int http_client::handle_input(ndk::ndk_handle )
   {
     if (errno == EWOULDBLOCK)
       return 0;
-    net_log->error("socket %d error [%s]!",
-                   this->peer().get_handle(),
-                   strerror(errno));
+    if (this->recv_msg_ok_ == 0)
+      this->session_desc_ = strerror(errno);
+    net_log->error("socket %d error [%s]!", h, strerror(errno));
     return -1;
   }else if (result == 0)
   {
+    if (this->recv_msg_ok_ == 0)
+      this->session_desc_ = strerror(errno);
     net_log->debug("socket %d closed by peer!", 
                    this->peer().get_handle());
     return -1;
@@ -169,13 +164,10 @@ int http_client::handle_input(ndk::ndk_handle )
 
   if (this->recv_buff_->space() == 0)
   {
-    ndk::message_block *mb = 
-      new ndk::message_block(this->recv_buff_->size() * 2);
-    std::memcpy(mb->data(), 
-                this->recv_buff_->data(), 
-                this->recv_buff_->length());
-    this->recv_buff_->release();
-    this->recv_buff_ = mb;
+    this->response_to_client(413);
+    this->session_desc_ = "Request entity too large!";
+    net_log->error("Request entity too large!");
+    return -1;
   }
 
   return this->handle_data();
@@ -189,19 +181,26 @@ int http_client::handle_timeout(const void *, const ndk::time_value &now)
                  this->peer().get_handle(),
                  tv.sec(),
                  (int)tv.msec());
+  this->response_to_client(408);
+  this->session_desc_ = "Request Timeout";
   return -1;
 }
-int http_client::handle_close(ndk::ndk_handle , ndk::reactor_mask m)
+int http_client::handle_close(ndk::ndk_handle h, ndk::reactor_mask m)
 {
   assert(m == ndk::event_handler::read_mask 
          || m == ndk::event_handler::timer_mask
          || m == ndk::event_handler::write_mask
+         || m == ndk::event_handler::connect_mask
+         || m == 0
          || m == ndk::event_handler::all_events_mask);
+  if (m == ndk::event_handler::all_events_mask)
+  {
+    net_log->error("connection [%d] reset!", h);
+    this->session_desc_ = "Connection Reset";
+  }
   this->destroy();
   return 0;
 }
-static const char *hit_cache = "HIT CACHE";
-static const char *hit_disk = "HIT DISK";
 int http_client::handle_data()
 {
   this->recv_buff_->set_eof();
@@ -209,7 +208,7 @@ int http_client::handle_data()
   char *p = ::strstr(ptr, "\r\n\r\n");
   if (p == 0)
   {
-    net_log->rinfo("recv an uncompletd request");
+    net_log->warning("recv an uncompletd request");
     return 0;
   }
   // check method
@@ -219,7 +218,14 @@ int http_client::handle_data()
     this->http_method_ = HTTP_HEAD;
   else
   {
-    net_log->error("unsupport http method [%s]", ptr);
+    this->session_desc_ = "Unsupported HTTP Method!";
+    net_log->error("unsupport http method [%c%c%c%c]", 
+                   ptr[0],
+                   ptr[1],
+                   ptr[2],
+                   ptr[3]
+                   );
+    this->response_to_client(501);
     return -1;
   }
 
@@ -235,44 +241,11 @@ int http_client::handle_data()
   uri_begin_p = http_parser::get_uri(uri_begin_p, &uri_end_p);
   if (uri_begin_p == 0)
   {
-    this->session_desc_ = "Parse uri failed";
-    this->response_client(400);
+    this->session_desc_ = "Parse Uri Failed";
+    this->response_to_client(400);
     return -1;
   }
   this->uri_.assign(uri_begin_p, uri_end_p);
-
-  // get host
-  char *host_p_end = 0;
-  char *host_p = http_parser::get_value(uri_end_p,
-                                        "Host",
-                                        4,
-                                        &host_p_end);
-  if (host_p == 0)
-  {
-    this->session_desc_ = "Not found 'Host' header";
-    this->response_client(400);
-    return -1;
-  }
-  std::string host(host_p, host_p_end);
-  if (host.find(':') == std::string::npos)
-  {
-    std::ostringstream ostr;
-    ostr << host << ":" << g_listen_port;
-    host = ostr.str();
-  }
-
-  // get range
-  int64_t begin_pos = 0;
-  int64_t end_pos = -1;
-  int partial = 0;
-  int ret = this->get_range(uri_end_p, begin_pos, end_pos);
-  if (ret == 206)
-    partial = 1;
-  else if (ret != 200)
-  {
-    this->response_client(ret);
-    return -1;
-  }
 
   // interface.
   if (this->uri_.length() == 1)
@@ -280,128 +253,207 @@ int http_client::handle_data()
     this->show_status();
     return -1;
   }
-  std::string url = "http://" + host + this->uri_;
+  return this->handle_request(uri_end_p);
+}
+int http_client::handle_request(const char *http_header)
+{
+  int result = 0;
 
-  std::string filename = g_doc_root + this->uri_;
-
-  fileinfo_ptr fileinfo = file_manager::instance()->find(url);
-  if (!fileinfo)  
+  // parse params
+  char *url_p = ::strchr(this->uri_.c_str(), '?');
+  if (url_p == 0 || *(url_p + 1) == 0)
   {
-    struct stat st;
-    if (::stat(filename.c_str(), &st) != -1)
-    {
-      if ((st.st_mode & S_IFMT) == S_IFREG)
-      {
-        fileinfo = fileinfo_ptr(new file_info());
-        fileinfo->length(st.st_size);
-        fileinfo->url(url);
-        fileinfo->filename(filename);
-        fileinfo->mtime(st.st_mtime);
-        file_manager::instance()->insert(fileinfo);
-      }else
-      {
-        this->session_desc_ = "Not a regular file";
-        this->response_client(403);
-        return -1;
-      }
-    }else
-    {
-      this->session_desc_ = strerror(errno);
-      if (errno == ENOENT)
-        this->response_client(404);
-      else
-        this->response_client(503);
-      return -1;
-    }
-  }
-
-  this->recv_msg_ok_ = 1;
-  ++g_requests;
-  if (g_payload > g_concurrency_num)
-  {
-    this->session_desc_ = "Out of payload";
-    this->response_client(503);
+    this->session_desc_ = "Not Found URL Params In URI";
+    this->response_to_client(400);
     return -1;
   }
 
+  std::string url;
+  int bandwidth = 0;
+  result = this->parse_params(url_p + 1, bandwidth, url);
+  if (result != 0)
+  {
+    this->session_desc_ = "Invalid Params";
+    this->response_to_client(400);
+    return -1;
+  }
+
+  // check payload.
+  if (g_payload > g_concurrency_num)
+  {
+    this->session_desc_ = "Out Of Payload";
+    this->response_to_client(503);
+    return -1;
+  }
+
+  net_log->trace("request file [%s]", url.c_str());
+  this->recv_msg_ok_ = 1;
+
+  int response_code = 200;
+  // get range
+  int64_t begin_pos = 0;
+  int64_t end_pos = -1;
+  int ret = this->get_range(http_header, begin_pos, end_pos);
+  if (ret == 206)
+  { 
+    response_code = 206;
+    this->session_desc_ = "206 Partial Content";
+  }else if (ret != 200)
+  {
+    this->response_to_client(ret);
+    return -1;
+  }else
+    this->session_desc_ = "200 OK";
+
+  this->session_id_ = push_sessionmgr::instance()->alloc_sessionid();
+  push_session_ptr push_ss(new push_session(this->session_id_));
+  push_ss->client(this);
+  push_ss->request_url(url);
+  push_ss->output_bdwidth_limit(bandwidth);
+  push_ss->range_begin_pos(begin_pos);
+  push_ss->range_end_pos(end_pos);
+  push_sessionmgr::instance()->insert(push_ss);
+
+  file_info_ptr fileinfo = file_manager::instance()->find(url);
+  if (!fileinfo)  
+  {
+    handle_pull_file(url, url, this->session_id_, begin_pos, end_pos);
+    return 0;
+  }
+
+  // client cache
+  if ((fileinfo->status() & file_info::ST_COMPLETED)
+      // must completed
+      && (this->check_modified(http_header, 
+                               fileinfo->mtime(),
+                               fileinfo->etag())) == -1)
+  {
+    this->session_desc_ = "Not Modified!";
+    this->response_to_client(304);
+    push_sessionmgr::instance()->remove(this->session_id_);
+    return -1;
+  }
+
+  // find file information.
   if (end_pos == -1)
     end_pos = fileinfo->length() - 1;
 
   this->content_length_ = end_pos - begin_pos + 1;
+  push_ss->content_length(this->content_length_);
 
   if (this->http_method_ == HTTP_HEAD)
   {
-    this->session_desc_ = "Get resource infor!";
-    this->response_client(200, begin_pos, end_pos);
+    this->session_desc_ = "Get Resource Info!";
+    this->response_to_client(response_code, 
+                             begin_pos, 
+                             end_pos, 
+                             this->content_length_,
+                             fileinfo->mtime());
+    push_sessionmgr::instance()->remove(this->session_id_);
     return -1;
   }
 
-  int result = 0;
+  if (fileinfo->status() & file_info::ST_UNCOMPLETED)
+  {
+    this->session_desc_ = "File Is Uncompleted!";
+    this->response_to_client(501);
+    push_sessionmgr::instance()->remove(this->session_id_);
+    return -1;
+  }
+
+  if (this->content_length_ == 0 && response_code == 206)
+  {
+    this->session_desc_ = "Range Is Empty!";
+    this->response_to_client(response_code,
+                             begin_pos, 
+                             end_pos, 
+                             fileinfo->length(),
+                             fileinfo->mtime());
+    push_sessionmgr::instance()->remove(this->session_id_);
+    return -1;
+  }
+
+  // select transfer agent.
   transfer_agent *trans_agent = 0;
   if (fileinfo->length() <= (int64_t)g_max_mem_cache_size 
-      && fileinfo->length() >= (int64_t)g_min_mem_cache_size)
+      && fileinfo->length() >= (int64_t)g_min_mem_cache_size
+     )
   {
     ++g_cache_file_requests;
-    trans_agent = new mem_cache_transfer(begin_pos, this->content_length_);
-    result = trans_agent->open(fileinfo);
-    if (result != 0)
+    trans_agent = new mem_cache_transfer(begin_pos, 
+                                         this->content_length_);
+    if (trans_agent->open(fileinfo) != 0)
     {
       // cache manager is full.
       delete trans_agent;
       trans_agent = 0;
     }else
     {
-      this->session_desc_ = hit_cache;
+      this->session_desc_ = HIT_CACHE;
+      ++g_hit_cache;
     }
   }
 
-  // direct read file from disk.
   if (trans_agent == 0)
   {
+    // direct read file from disk.
     ++g_disk_file_reqeusts;
-    trans_agent = new serial_file_transfer(begin_pos, this->content_length_);
+    trans_agent = new serial_file_transfer(begin_pos, 
+                                           this->content_length_);
     if (trans_agent->open(fileinfo) != 0)
     {
       delete trans_agent;
-      this->response_client(503);
+      trans_agent = 0;
+      this->session_desc_ = "Open File Failed!";
+      this->response_to_client(503);
+      push_sessionmgr::instance()->remove(this->session_id_);
       return -1;
     }else
     {
-      this->session_desc_ = hit_disk;
+      this->session_desc_ = HIT_DISK;
       ++g_hit_disk;
     }
   }
-  if (partial == 1)
-    result = this->response_client(206, begin_pos, end_pos, fileinfo->length());
-  else
-    result = this->response_client(200, begin_pos, end_pos);
-  if (result != -1)
+
+  // response to client.
+  result = this->response_to_client(response_code, 
+                                    begin_pos, 
+                                    end_pos, 
+                                    fileinfo->length(),
+                                    fileinfo->mtime());
+  if (result != 0)
   {
-    this->session_id_ = http_sessionmgr::instance()->alloc_sessionid();
-    http_session *hs = new http_session(this->session_id_);
-    hs->client(this);
-    http_sessionmgr::instance()->insert(hs);
-    dispatch_data_task::dispatch_job *job = 
-      new dispatch_data_task::dispatch_job;
-    job->session_id = this->session_id_;
-    job->transfer_agent_ = trans_agent;
-    job->client = this;
-    job->content_length_ = this->content_length_;
-    g_dispatch_data_task[0].push_job(job);
-    net_log->debug("insert sessionid %d h = %d", 
-                   this->session_id_,
-                   this->get_handle());
-    ++g_payload;
-  }else if (trans_agent) 
-  {
-    delete trans_agent;
+    if (trans_agent != 0)
+      delete trans_agent;
+    this->session_desc_ = "Response To Client Failed!";
+    push_sessionmgr::instance()->remove(this->session_id_);
+    return -1;
   }
-  return result;
+  result = handle_start_transfer_data(trans_agent,
+                                      this->session_id_,
+                                      bandwidth,
+                                      begin_pos, 
+                                      end_pos,
+                                      this->content_length_,
+                                      this);
+  if (result != 0)
+  {
+    this->session_desc_ = my_strerr(-result);
+    push_sessionmgr::instance()->remove(this->session_id_);
+    return -1;
+  }
+
+  //
+  net_log->debug("insert sessionid %d h = %d", 
+                 this->session_id_,
+                 this->get_handle());
+  return 0;
 }
-int http_client::response_client(int status,
-                                 int64_t begin_pos/* = 0*/,
-                                 int64_t end_pos/* = 0*/,
-                                 int64_t file_size/* = 0*/)
+int http_client::response_to_client(int status,
+                                    int64_t begin_pos/* = 0*/,
+                                    int64_t end_pos/* = 0*/,
+                                    int64_t file_size/* = 0*/,
+                                    time_t last_modified_time)
 {
   this->response_code_ = status;
   std::ostringstream os;
@@ -414,6 +466,9 @@ int http_client::response_client(int status,
   case 206:
     os << "HTTP/1.1 206 Partial Content\r\n";
     break;
+  case 304:
+    os << "HTTP/1.1 304 Not Modified\r\n";
+    break;
   case 400:
     os << "HTTP/1.1 400 Bad Request\r\n";
     break;
@@ -422,6 +477,12 @@ int http_client::response_client(int status,
     break;
   case 404:
     os << "HTTP/1.1 404 Not Found\r\n";
+    break;
+  case 408:
+    os << "HTTP/1.1 408 Request Timeout\r\n";
+    break;
+  case 413:
+    os << "HTTP/1.1 413 Request Entity Too Large\r\n";
     break;
   case 416:
     os << "HTTP/1.1 416 Requested range not satisfiable\r\n";
@@ -442,7 +503,18 @@ int http_client::response_client(int status,
   // 
   if (status == 200 || status == 206)
   {
-    os << "Accept-Ranges: bytes\r\n"
+    char date[64] = {0};
+    this->gmttime_to_str(::time(0), date, sizeof(date));
+
+    char last_modified[64] = {0};
+    this->gmttime_to_str(last_modified_time, 
+                         last_modified, 
+                         sizeof(last_modified));
+
+    if (this->content_length_ == 0)
+      this->content_length_ = end_pos - begin_pos + 1;
+    os << "Date: " << date << "\r\n"
+      << "Last-Modified: " << last_modified << "\r\n"
       << "Connection: close\r\n"
       << "Content-Length: " << end_pos - begin_pos + 1 << "\r\n";
     if (status == 206)
@@ -484,7 +556,6 @@ int http_client::get_range(const char *str,
 
   char *value_ptr = range_p + ::strspn(range_p, "bytes= \t");
 
-  net_log->error("%s", value_ptr);
   char *xx = value_ptr;
   while (*xx && xx < range_end_p)
   {
@@ -493,99 +564,109 @@ int http_client::get_range(const char *str,
   }
   if (xx != range_end_p)
   {
-    this->session_desc_ = "Not support multi Range.";
+    this->session_desc_ = "Not Support Multi Range.";
     return 501;
   }
 
-  char *endptr = 0;
   if (isdigit(*value_ptr))
   {
-    begin_pos = ::strtoll(value_ptr, &endptr, 10);
+    begin_pos = ::strtoll(value_ptr, 0, 10);
     char *sep = ::strchr(value_ptr + 1, '-');
     if (sep != 0 && isdigit(*(sep + 1)))  // 123456-123
-      end_pos = ::strtoll(sep + 1, &endptr, 10);
+      end_pos = ::strtoll(sep + 1, 0, 10);
   }else
   {
     begin_pos = 0;
     if (isdigit(*(value_ptr + 1)))
-      end_pos = ::strtoll(value_ptr + 1, &endptr, 10);
+      end_pos = ::strtoll(value_ptr + 1, 0, 10);
     else
     {
-      this->session_desc_ = "Requested range not satisfiable";
+      this->session_desc_ = "Requested Range Not Satisfiable";
       return 416;
     }
   }
   return 206;
 }
-int http_client::show_status()
+int http_client::check_modified(const char *http_header,
+                                const time_t last_modified_time,
+                                const std::string &etag)
 {
-  //g_cache_manager->check();  // for debug
-  STRACE("");
-  static char requests[]     = "requests";
-  static int  requests_w     = sizeof(requests) + 1;
-  static char c_file_reqs[]  = "c_file_reqs";
-  static int  c_file_reqs_w  = sizeof(c_file_reqs) + 1;
-  static char d_file_reqs[]  = "d_file_reqs";
-  static int  d_file_reqs_w  = sizeof(d_file_reqs) + 1;
-  static char finished[]     = "finished";
-  static int  finished_w     = sizeof(finished) + 1;
-  static char hit_cache[]    = "hit_cache";
-  static int  hit_cache_w    = sizeof(hit_cache) + 1;
-  static char hit_disk[]     = "hit_disk";
-  static int  hit_disk_w     = sizeof(hit_disk) + 1;
-  static char hit_c_rate[]   = "hit_cache_rate";
-  static int  hit_c_rate_w   = sizeof(hit_c_rate) + 1;
-  static char payload[]      = "payload";
-  static int  payload_w      = sizeof(payload) + 1;
-  static char cache_mem_used[]  = "c_mem_used(mb)";
-  static int  cache_mem_used_w  = sizeof(cache_mem_used) + 1;
-  static char aio_mem_used[]  = "aio_mem_used(mb)";
-  static int  aio_mem_used_w  = sizeof(aio_mem_used) + 1;
+  char *if_modified_since_end_p = 0;
+  char *if_modified_since_p = http_parser::get_value(http_header,
+                                                     "If-Modified-Since",
+                                                     sizeof("If-Modified-Since") - 1,
+                                                     &if_modified_since_end_p);
+  if (if_modified_since_p == 0) return 0;
+  std::string if_modified_time(if_modified_since_p, if_modified_since_end_p);
+  struct tm gmt_time;
+  if (strptime(if_modified_time.c_str(), 
+               "%a, %d %b %Y %H:%M:%S GMT",
+               &gmt_time) != 0)
+    return 0;
 
-  std::ostringstream  ostr;
-  ostr << std::setfill(' ')
-    << std::setiosflags(std::ios::left);
-  ostr << std::setw(requests_w) << requests
-    << std::setw(finished_w) << finished
-    << std::setw(c_file_reqs_w) << c_file_reqs 
-    << std::setw(d_file_reqs_w) << d_file_reqs 
-    << std::setw(hit_cache_w) << hit_cache
-    << std::setw(hit_c_rate_w) << hit_c_rate
-    << std::setw(hit_disk_w) << hit_disk
-    << std::setw(payload_w) << payload
-    << std::setw(cache_mem_used_w) << cache_mem_used
-    << std::setw(aio_mem_used_w) << aio_mem_used
-    << std::endl;
-  int h_c_rate  = 0;
-  if (g_finished > 0 && g_hit_cache > 0)
-    h_c_rate = int((g_hit_cache * 100) / g_cache_file_requests);
-  ostr << std::setw(requests_w) << g_requests
-    << std::setw(finished_w) << g_finished
-    << std::setw(c_file_reqs_w) << g_cache_file_requests
-    << std::setw(d_file_reqs_w) << g_disk_file_reqeusts
-    << std::setw(hit_cache_w) << g_hit_cache
-    << std::setw(hit_c_rate_w) << h_c_rate
-    << std::setw(hit_disk_w) << g_hit_disk
-    << std::setw(payload_w) << g_payload
-    << std::setw(cache_mem_used_w) << (g_cache_mem_used > 0 ? 
-    g_cache_mem_used/1024/1024 : g_cache_mem_used)
-    << std::setw(aio_mem_used_w) << file_io_cache_mgr->alloc_blocks()
-    << std::endl << std::endl;
-#if 0
-  std::deque<std::string> l = file_manager::instance()->get_all_urls();
-  std::deque<std::string>::iterator lp;
-  for (lp = l.begin(); lp != l.end(); ++lp)
-    ostr << *lp << std::endl;
-#endif
+  time_t t = mktime(&gmt_time);
+  if (last_modified_time > t)
+    return 0;
+  else if (last_modified_time == t && !etag.empty())
+  {
+    char *etag_end_p = 0;
+    char *etag_p = http_parser::get_value(http_header,
+                                          "Etag",
+                                          4,
+                                          &etag_end_p);
+    if (etag_p == 0) return 0;
+    std::string et(etag_p, etag_end_p);
+    if (et != etag)
+      return 0;
+  }
+  return -1;
+}
+int http_client::parse_params(const char *param_p,
+                              int &bandwidth,
+                              std::string &url)
+{
+  // bandwidth
+  char *bw_p = ::strstr(param_p, "bw=");
+  if (bw_p == 0 
+      || (*(bw_p - 1) != '?' && *(bw_p - 1) != '&') // 
+      )
+    return -1;
+  bandwidth = ::atoi(bw_p + sizeof("bw=") - 1);
 
+  // url
+  char *url_p = ::strstr(param_p, "url=");
+  if (url_p == 0 
+      || (*(url_p - 1) != '?' && *(url_p - 1) != '&') // 
+      )
+    return -1;
+  size_t len = ::strcspn(url_p + sizeof("url=") - 1, "&");
+  url.assign(url_p + sizeof("url=") - 1, len);
+  return 0;
+}
+// format time to "Fri Jul 23 17:37:27 CST 2010"
+char *http_client::gmttime_to_str(time_t now, char *str, size_t len)
+{
+  if (len < sizeof("Fri, Jul 23 17:37:27 CST 2010")) return str;
+  struct tm t;
+  if (now == 0) now = ::time(0);
+  ::gmtime_r(&now, &t);
+  ::strftime(str, len, "%a, %d %b %Y %H:%M:%S GMT", &t);
+  if (len > sizeof("Fri, Jul 23 17:37:27 CST 2010")) 
+    len = sizeof("Fri, Jul 23 17:37:27 CST 2010");
+  str[len-1] = '\0';
+  return str;
+}
+void http_client::show_status()
+{
+  std::string msg;
+  //service_status::instance()->show_status(msg);
   std::ostringstream os;
   os << "HTTP/1.0 200 OK\r\n"
-    << "Server: fcache\r\n"
+    << "Server: fcached\r\n"
     << "Accept-Ranges: bytes\r\n"
     << "Connection: close\r\n"
-    << "Content-Length: " << ostr.str().length() << "\r\n"
+    << "Content-Length: " << msg.length() << "\r\n"
     << "\r\n"
-    << ostr.str().c_str();
-  this->peer().send(os.str().c_str(), os.str().length());
-  return -1;
+    << msg;
+  this->peer().send(msg.c_str(), msg.length());
 }
