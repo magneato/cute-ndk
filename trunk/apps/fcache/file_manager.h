@@ -32,7 +32,7 @@ public:
   { }
 
   //
-  inline int insert(fileinfo_ptr &finfo)
+  inline int insert(file_info_ptr &finfo)
   {
     std::pair<file_map_iter, bool> result = 
       this->file_map_.insert(std::make_pair(finfo->url(), finfo));
@@ -40,11 +40,11 @@ public:
   }
 
   //
-  inline fileinfo_ptr find(const std::string &url)
+  inline file_info_ptr find(const std::string &url)
   {
     file_map_iter pos = this->file_map_.find(url);
     if (pos == this->file_map_.end())
-      return fileinfo_ptr();
+      return file_info_ptr();
     return pos->second;
   }
 
@@ -64,8 +64,8 @@ public:
     return l;
   }
 private:
-  typedef std::map<std::string, fileinfo_ptr> file_map_t;
-  typedef std::map<std::string, fileinfo_ptr>::iterator file_map_iter;
+  typedef std::map<std::string, file_info_ptr> file_map_t;
+  typedef std::map<std::string, file_info_ptr>::iterator file_map_iter;
 
   file_map_t file_map_;
 };

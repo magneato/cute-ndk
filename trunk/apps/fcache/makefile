@@ -13,7 +13,7 @@
                                BIN_DIR = ./bin
                                 TARGET = $(BIN_DIR)/fcached
                               C_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
-                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DNDK_DUMP#-DNDK_STRACE
+                                MACROS = -D_REENTRANT -D__USE_POSIX -DNDK_RTLOG -DNDK_DUMP -DDUMP_INFO#-DNDK_STRACE
                                     CC = gcc
                             CPP_CFLAGS = -Wall -W -Wpointer-arith -pipe -fPIC
                                   MAKE = make
@@ -28,10 +28,19 @@
                             OBJECT_DIR = ./.obj/
                               CPPFILES = \
 																				 dispatch_data_task.cpp  \
+																				 errno.cpp  \
 																				 fcached.cpp  \
+																				 file_info.cpp  \
+																				 handle_pull_file.cpp  \
+																				 handle_start_transfer_data.cpp  \
 																				 http_client.cpp  \
 																				 http_parser.cpp  \
 																				 mem_cache_transfer.cpp  \
+																				 pipe_buffer.cpp  \
+																				 pull_http_agent.cpp  \
+																				 pull_file_transfer.cpp  \
+																				 pull_session.cpp  \
+																				 push_session.cpp  \
 																				 reactor_event_handler.cpp  \
 																				 serial_file_transfer.cpp  \
 

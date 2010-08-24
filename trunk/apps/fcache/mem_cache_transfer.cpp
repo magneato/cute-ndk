@@ -1,4 +1,5 @@
 #include "mem_cache_transfer.h"
+#include "errno.h"
 
 #include <sys/mman.h>
 #include <ndk/logger.h>
@@ -26,11 +27,11 @@ public:
 };
 observer *g_cache_object_observer = new observer();
 
-mem_cache_transfer::mem_cache_transfer(uint64_t start_pos,
-                                       uint64_t content_length)
-: offset_(start_pos),
+mem_cache_transfer::mem_cache_transfer(int64_t begin_pos,
+                                       int64_t content_length)
+: offset_(begin_pos),
   content_length_(content_length),
-  start_pos_(start_pos),
+  begin_pos_(begin_pos),
   transfer_bytes_(0),
   cache_obj_(0)
 {
@@ -43,7 +44,7 @@ mem_cache_transfer::~mem_cache_transfer()
     this->cache_obj_ = 0;
   }
 }
-int mem_cache_transfer::open(const fileinfo_ptr &finfo)
+int mem_cache_transfer::open(const file_info_ptr &finfo)
 {
   this->cache_obj_ = g_cache_manager->get(finfo->url());
   if (this->cache_obj_ == 0)
@@ -97,17 +98,17 @@ int mem_cache_transfer::transfer_data(ndk::ndk_handle handle,
                                       int &transfer_bytes)
 {
   int result = 0;
-  uint64_t bytes_to_send = 0;
+  int64_t bytes_to_send = 0;
   while (transfer_bytes < max_size 
          && this->transfer_bytes_ < this->content_length_)
   {
     bytes_to_send = this->content_length_ - this->transfer_bytes_;
     result = ndk::send(handle,
                        (char *)this->cache_obj_->data() 
-                       + int(this->start_pos_)
+                       + int(this->begin_pos_)
                        + int(this->transfer_bytes_), 
-                       bytes_to_send > uint64_t(ONCE_TRANSFER_PACKET_SIZE) ? 
-                       uint64_t(ONCE_TRANSFER_PACKET_SIZE) : bytes_to_send,
+                       bytes_to_send > int64_t(ONCE_TRANSFER_PACKET_SIZE) ? 
+                       int64_t(ONCE_TRANSFER_PACKET_SIZE) : bytes_to_send,
                        0);
     if (result >= 0)
     {
@@ -118,7 +119,7 @@ int mem_cache_transfer::transfer_data(ndk::ndk_handle handle,
       memcache_log->error("trnasfer data failed! [h = %d][%s]",
                           handle,
                           strerror(errno));
-      return -1;
+      return -CLT_ERR_SEND_DATA_FAILED;
     }else 
       return 0;
   }

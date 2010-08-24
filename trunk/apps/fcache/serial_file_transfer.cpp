@@ -1,6 +1,7 @@
 #include "serial_file_transfer.h"
 #include "buffer_manager.h"
 #include "file_manager.h"
+#include "errno.h"
 
 #include <ndk/logger.h>
 
@@ -9,10 +10,8 @@ static ndk::logger *file_io_log = ndk::log_manager::instance()->get_logger("root
 extern ndk::asynch_file_io **g_aio_task;
 extern buffer_manager *file_io_cache_mgr;
 
-#define ONCE_TRANSFER_PACKET_SIZE   4096
-
-serial_file_transfer::serial_file_transfer(uint64_t start_pos,
-                                           uint64_t content_length)
+serial_file_transfer::serial_file_transfer(int64_t begin_pos,
+                                           int64_t content_length)
   : handle_(NDK_INVALID_HANDLE),
   aio_id_(-1),
   eof_(0),
@@ -21,9 +20,9 @@ serial_file_transfer::serial_file_transfer(uint64_t start_pos,
   send_bytes_(0),
   buffer_size_(0),
   reserve_buffer_size_(0),
-  offset_(start_pos),
+  offset_(begin_pos),
   content_length_(content_length),
-  start_pos_(start_pos),
+  begin_pos_(begin_pos),
   transfer_bytes_(0),
   buffer_(0),
   reserve_buffer_(0)
@@ -49,7 +48,7 @@ serial_file_transfer::~serial_file_transfer()
     this->handle_ = NDK_INVALID_HANDLE;
   }
 }
-int serial_file_transfer::open(const fileinfo_ptr &fileinfo)
+int serial_file_transfer::open(const file_info_ptr &fileinfo)
 {
   this->transfer_bytes_ = 0;
   this->send_bytes_ = 0;
@@ -82,7 +81,7 @@ int serial_file_transfer::start_read(int fd_prio, int io_prio)
   this->reserve_buffer_ = (char *)file_io_cache_mgr->malloc();
   assert(this->reserve_buffer_ != 0);
   size_t read_bytes = file_io_cache_mgr->block_size();
-  if (uint64_t(read_bytes) > (this->content_length_ - this->transfer_bytes_))
+  if (int64_t(read_bytes) > (this->content_length_ - this->transfer_bytes_))
     read_bytes = this->content_length_ - this->transfer_bytes_;
   int result = g_aio_task[0]->start_aio(this->handle_,
                                         &this->aio_id_,
@@ -160,7 +159,7 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
       file_io_log->error("trnasfer data failed! [h = %d][%s]",
                          handle,
                          strerror(errno));
-      return -1;
+      return -CLT_ERR_SEND_DATA_FAILED;
     }else 
     {
       file_io_log->debug("errno = wouldblockd");
@@ -185,8 +184,12 @@ int serial_file_transfer::transfer_data(ndk::ndk_handle handle,
     if (this->eof_ || this->file_io_error_)
     {
       if (this->send_bytes_ == this->buffer_size_)
+      {
+        if (this->file_io_error_)
+          return IO_ERR_READ_FILE_ERROR;
         return -1;
-    }else if (this->aio_id_ == -1 && ((this->offset_ - this->start_pos_) 
+      }
+    }else if (this->aio_id_ == -1 && ((this->offset_ - this->begin_pos_) 
                                       != this->content_length_)
               && this->reserve_buffer_ == 0)
     {

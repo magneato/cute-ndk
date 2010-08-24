@@ -7,43 +7,32 @@
  */
 //========================================================================
 
-#ifndef HTTP_SESSION_H_
-#define HTTP_SESSION_H_
+#ifndef PUSH_SESSION_H_
+#define PUSH_SESSION_H_
 
-#include <string>
+#include <boost/shared_ptr.hpp>
 
+#include "session.h"
 #include "http_client.h"
 
 /**
- * @class http_session
+ * @class push_session
  * 
  * @brief
  */
-class http_session
+class push_session : public session
 {
 public:
-  http_session(int sid)
-    : session_id_(sid),
+  push_session(int sid)
+    : session(sid),
     curr_output_bdwidth_(0),
     output_bdwidth_limit_(0),
     client_(0)
   { }
 
-  ~http_session()
+  ~push_session()
   { }
 
-  inline void session_id(int sid)
-  { this->session_id_ = sid; }
-
-  inline int session_id()
-  { return this->session_id_; }
-
-  inline std::string &request_url()
-  { return this->request_url_; }
-
-  inline void request_url(const std::string &val)
-  { this->request_url_ = val; }
-   
   inline void curr_output_bdwidth(int bw)
   { this->curr_output_bdwidth_ = bw; }
 
@@ -67,16 +56,18 @@ public:
 
   inline void client_address(const std::string &val)
   { this->client_address_ = val; }
+
+  // == Method
+  void release();
 private:
-  int session_id_;
   int curr_output_bdwidth_;
   int output_bdwidth_limit_;
 
   http_client *client_;
 
-  std::string request_url_;
   std::string client_address_;
 };
+typedef boost::shared_ptr<push_session> push_session_ptr;
 
-#endif // HTTP_SESSION_H_
+#endif // PUSH_SESSION_H_
 

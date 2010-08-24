@@ -24,16 +24,20 @@
 class mem_cache_transfer : public transfer_agent
 {
 public:
-  mem_cache_transfer(uint64_t start_pos,
-                     uint64_t content_len);
+  mem_cache_transfer(int64_t start_pos,
+                     int64_t content_len);
 
-  virtual int open(const fileinfo_ptr &finfo);
+  virtual int open(const file_info_ptr &finfo);
 
   virtual ~mem_cache_transfer();
 
   virtual int transfer_data(ndk::ndk_handle h,
                             int max_size, 
                             int &transfer_bytes);
+
+  virtual void start_transfer() {} ;
+
+  virtual void stop_transfer() {} ;
 
   virtual int close();
 protected:
@@ -43,10 +47,10 @@ protected:
 protected:
   size_t send_bytes_;
 
-  uint64_t offset_;
-  uint64_t content_length_;
-  uint64_t start_pos_;
-  uint64_t transfer_bytes_;
+  int64_t offset_;
+  int64_t content_length_;
+  int64_t begin_pos_;
+  int64_t transfer_bytes_;
 
   ndk::cache_object *cache_obj_;
 
