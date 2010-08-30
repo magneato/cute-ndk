@@ -17,6 +17,7 @@ pipe_buffer::pipe_buffer(int chunk_id,
   ref_count_(0),
   wr_ptr_(0),
   buffer_size_(content_length),
+  bytes_to_write_(content_length),
   buffer_(0),
   file_info_(fileinfo)
 {
@@ -80,7 +81,32 @@ void pipe_buffer::handle_aio_write(const ndk::aio_opt_t *aio_result)
 {
   if (aio_result->errcode() == 0)
   {
-    assert(aio_result->bytes_completed() == this->buffer_size_);
+    if (aio_result->bytes_completed() != this->bytes_to_write_)
+    {
+      this->bytes_to_write_ -= aio_result->bytes_completed();
+      file_io_log->error("bytes complted = %d buffer size = %d wr_ptr = %d",
+                         aio_result->bytes_completed(),
+                         this->buffer_size_,
+                         this->wr_ptr_);
+      int aio_id = -1;
+      int result = g_aio_task[0]->start_aio(this->handle_,
+                                            &aio_id,
+                                            this->bytes_to_write_,
+                                            this->chunk_id_ * PIPE_CHUNK_SIZE + 
+                                            (this->buffer_size_ - 
+                                             this->bytes_to_write_),
+                                            this->buffer_ + (this->buffer_size_ - 
+                                                             this->bytes_to_write_),
+                                            this,
+                                            ndk::AIO_WRITE,
+                                            0,
+                                            5);
+      if (result == -1)
+      {
+        file_io_log->error("aio failed!");
+        //insert to pipe buffer pending queue.
+      }
+    }
     this->file_info_->set_bitmap(this->chunk_id_);
     this->file_info_->mtime(::time(0));
     if (this->file_info_->check_file_completed() == true)
@@ -120,7 +146,7 @@ int pipe_buffer::close(const int )
     int aio_id = -1;
     int result = g_aio_task[0]->start_aio(this->handle_,
                                           &aio_id,
-                                          this->buffer_size_,
+                                          this->bytes_to_write_,
                                           this->chunk_id_ * PIPE_CHUNK_SIZE,
                                           this->buffer_,
                                           this,

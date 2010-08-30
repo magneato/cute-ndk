@@ -13,6 +13,9 @@
 #include <ndk/event_handler.h>
 #include <ndk/singleton.h>
 
+#define  NOTIFY_DELETE_CLIENT           1001
+#define  NOTIFY_RESUME_HANDLE           1002
+
 /**
  * @brief notify event class
  */

@@ -1,3 +1,4 @@
+#include "reactor_event_handler.h"
 #include "pull_file_transfer.h"
 #include "buffer_manager.h"
 #include "pipe_buffer.h"
@@ -9,11 +10,13 @@ extern buffer_manager *file_io_cache_mgr;
 
 static ndk::logger* pull_log = ndk::log_manager::instance()->get_logger("root.pull");
 
-pull_file_transfer::pull_file_transfer(ndk::ndk_handle pull_file_handle,
+pull_file_transfer::pull_file_transfer(int pull_sid,
+                                       ndk::ndk_handle pull_file_handle,
                                        int64_t begin_pos,
                                        int64_t bytes_to_transfer,
                                        int64_t remaind_length)
-: chunk_id_(begin_pos/PIPE_CHUNK_SIZE),
+: pull_session_id_(pull_sid),
+  chunk_id_(begin_pos/PIPE_CHUNK_SIZE),
   pull_file_handle_(pull_file_handle),
   state_(STOP_TRANSFER),
   first_chunk_(1),
@@ -170,7 +173,7 @@ int pull_file_transfer::read_pipe_buffer()
 
     pull_log->trace("to resume handle %d", this->pull_file_handle_);
     // pipe is empty
-    int result = ndk::reactor::instance()->resume_handler(this->pull_file_handle_);
+    int result = this->resume_handler();
     if (result != 0)
     {
       pull_log->error("resume handle %d failed!", 
@@ -195,6 +198,16 @@ pipe_buffer *pull_file_transfer::create_pipe_buffer()
                                          pbuff_size, 
                                          this->file_info_);
   return pbuffer;
+}
+int pull_file_transfer::resume_handler()
+{
+  if (this->pull_session_id_ != -1)
+  {
+    return ndk::reactor::instance()->notify(reactor_event_handler::instance(),
+                                            new notify_event(NOTIFY_RESUME_HANDLE, 
+                                                             this->pull_session_id_));
+  }
+  return -1;
 }
 int pull_file_transfer::close()
 {

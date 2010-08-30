@@ -67,6 +67,8 @@ public:
 public:
   dispatch_data_task()
   : task_idle_(1),
+  dispatch_queue_mtx_(),
+  dispatch_queue_not_empty_cond_(dispatch_queue_mtx_),
   change_list_mtx_(),
   change_list_not_empty_cond_(change_list_mtx_)
   { }
@@ -103,6 +105,8 @@ private:
   typedef std::list<dispatch_job *>::iterator change_list_itor;
 
   dispatch_queue_t dispatch_queue_;
+  ndk::thread_mutex dispatch_queue_mtx_;
+  ndk::condition<ndk::thread_mutex> dispatch_queue_not_empty_cond_;
 
   change_list_t change_list_;
   ndk::thread_mutex change_list_mtx_;

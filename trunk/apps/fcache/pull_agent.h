@@ -24,6 +24,7 @@ public:
 
   virtual ~pull_agent() {}
 
+  virtual int resume() { return -1; }
 protected:
   typedef ndk::svc_handler super;
 };

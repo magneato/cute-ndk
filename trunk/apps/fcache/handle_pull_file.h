@@ -10,11 +10,12 @@
 #ifndef HANDLE_PULL_FILE_H_
 #define HANDLE_PULL_FILE_H_
 
-#include "pull_session.h"
+class push_session;
+class pull_session;
 
 extern int handle_pull_file(const std::string &url,            // client request url.
                             const std::string &url_for_pull,   // url for pull
-                            int sid,              // client sessionid
+                            push_session *push_ss,             // client session
                             int64_t begin_pos,    // client request begin pos
                             int64_t end_pos);     // client request end pos
 

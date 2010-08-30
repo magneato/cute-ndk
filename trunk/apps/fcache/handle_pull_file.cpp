@@ -11,12 +11,15 @@
 #include <ndk/inet_addr.h>
 #include <ndk/connector.h>
 
+#include <sys/vfs.h>
+
+extern std::string g_doc_root;
 extern ndk::connector<pull_agent> *g_connector;
 static ndk::logger* pull_log = ndk::log_manager::instance()->get_logger("root.pull");
 
 int handle_pull_file(const std::string &url,            // client request url.
                      const std::string &url_for_pull,   // url for pull
-                     int sid,             // push sessionid
+                     push_session *push_ss,             // push session
                      int64_t begin_pos,   // client request begin pos
                      int64_t end_pos)     // client request end pos
 {
@@ -37,9 +40,10 @@ int handle_pull_file(const std::string &url,            // client request url.
   psession->url_for_pulling(url_for_pull);
   psession->range_begin_pos(begin_pos);
   psession->range_end_pos(end_pos);
-  psession->push_session_id(sid);
+  psession->push_session_id(push_ss->session_id());
   pull_sessionmgr::instance()->insert(psession);
 
+  push_ss->pull_session_id(psid);
   if (queue_pull_sessionmgr::instance()->find(url) == 0)
   {
     pull_log->trace("multi pull file [%s]", url.c_str());
@@ -48,8 +52,25 @@ int handle_pull_file(const std::string &url,            // client request url.
                             1);
     return -PULL_MULTI_PULL_ERROR;
   }
+  // check disk space
+  struct statfs sfs;
+  if (statfs(g_doc_root.c_str(), &sfs) != -1)
+  {
+    int64_t free_space = (int64_t)sfs.f_bfree*(int64_t)sfs.f_bsize;
+    if (free_space < 512*1024*1024)
+    {
+      handle_pull_file_failed("Disk Is Full",
+                              psession.get(),
+                              1);
+      return -IO_ERR_NO_SPACE;
+
+    }
+  }
   queue_pull_sessionmgr::instance()->insert(url);
-  pull_log->trace("pull file [%s]...", url.c_str());
+  pull_log->trace("[%d] create pull session [%d] to pull file [%s]...", 
+                  push_ss->session_id(),
+                  psid,
+                  url.c_str());
   // 
   if (1)//pbuffer == 0)
   {
@@ -86,7 +107,7 @@ int handle_pull_file_ok(pull_session *pull_ss,
     fileinfo->length(entity_length);
     fileinfo->url(url);
     std::string filename = url.substr(url.find_last_of("/") + 1);
-    fileinfo->filename(filename);
+    fileinfo->filename(g_doc_root + "/" + filename);
     file_manager::instance()->insert(fileinfo);
   }
 
@@ -153,8 +174,6 @@ int handle_pull_file_failed(const char *desc,
   push_session_ptr push_ss = push_sessionmgr::instance()->find(push_sid);
   if (push_ss)
   {
-    if (!multi_pull)
-      queue_pull_sessionmgr::instance()->remove(push_ss->request_url());
     push_ss->client()->session_desc(desc);
     push_ss->client()->response_to_client(404);
     push_ss->client()->close();
@@ -163,9 +182,11 @@ int handle_pull_file_failed(const char *desc,
     pull_log->error("not found push session [%d]!",
                     push_sid);
   }
+  if (!multi_pull)
+    queue_pull_sessionmgr::instance()->remove(pull_ss->request_url());
   return 0;
 }
-int handle_pull_file_over(file_info *finfo, pull_session *)
+int handle_pull_file_over(file_info *, pull_session *)
 {
   // check file is completed or not!
   return 0;

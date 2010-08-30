@@ -15,6 +15,8 @@
 #include "session.h"
 #include "http_client.h"
 
+class pull_agent;
+
 /**
  * @class pull_session
  * 
@@ -43,10 +45,20 @@ public:
   inline void url_for_pulling(const std::string &val)
   { this->url_for_pulling_ = val; }
 
+  inline void pulling_agent(pull_agent *val)
+  { this->pull_agent_ = val; }
+
+  inline pull_agent *pulling_agent()
+  { return this->pull_agent_; }
+
   // == Method
   virtual void release();
+
+  int resume_handler();
 private:
   int push_session_id_;
+
+  pull_agent *pull_agent_;
 
   std::string url_for_pulling_;
 };

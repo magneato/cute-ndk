@@ -1,5 +1,6 @@
 #include "reactor_event_handler.h"
 #include "push_sessionmgr.h"
+#include "pull_sessionmgr.h"
 
 #include <ndk/logger.h>
 
@@ -13,19 +14,36 @@ int reactor_event_handler::handle_msg(void *msg)
 
   switch(event->message_id)
   {
-  case 1000:
-    //handle_pull_file_ok(event);
+  case NOTIFY_DELETE_CLIENT:
+    {
+      push_session_ptr push_ss = 
+        push_sessionmgr::instance()->find(event->session_id);
+      if (push_ss)
+      {
+        push_ss->client()->close();
+      }else
+      {
+        event_log->debug("reactor event handler not find session: %d",
+                         event->session_id);
+      }
+    }
+    break;
+  case NOTIFY_RESUME_HANDLE:
+    {
+      pull_session_ptr pull_ss = 
+        pull_sessionmgr::instance()->find(event->session_id);
+      if (pull_ss)
+      {
+        pull_ss->resume_handler();
+      }else
+      {
+        event_log->debug("reactor event handler not find pull session: %d",
+                         event->session_id);
+      }
+    }
     break;
   default:
-    push_session_ptr push_ss = push_sessionmgr::instance()->find(event->session_id);
-    if (push_ss)
-    {
-      push_ss->client()->close();
-    }else
-    {
-      event_log->debug("reactor event handler not find session: %d",
-                       event->session_id);
-    }
+    assert(0);
   }
   delete event;
 
