@@ -36,9 +36,9 @@ namespace ndk
     friend class connector<svc_handler_t>;
   public:
     nonblocking_connect_handler(connector<svc_handler_t> &cn, svc_handler_t *h)
-      : connector_(cn),
-      svc_handler_(h),
-      timer_id_(-1)
+      : timer_id_(-1),
+      connector_(cn),
+      svc_handler_(h)
     { STRACE(""); }
 
     ~nonblocking_connect_handler()
