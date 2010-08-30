@@ -25,6 +25,7 @@ class push_session : public session
 public:
   push_session(int sid)
     : session(sid),
+    pull_session_id_(-1),
     curr_output_bdwidth_(0),
     output_bdwidth_limit_(0),
     client_(0)
@@ -57,10 +58,19 @@ public:
   inline void client_address(const std::string &val)
   { this->client_address_ = val; }
 
+  inline int pull_session_id(void)
+  { return this->pull_session_id_; }
+
+  inline void pull_session_id(int val)
+  { this->pull_session_id_ = val; }
+
   // == Method
   void release();
 private:
+  int pull_session_id_;
+
   int curr_output_bdwidth_;
+
   int output_bdwidth_limit_;
 
   http_client *client_;

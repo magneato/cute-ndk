@@ -19,6 +19,7 @@ const char *strerr[] =
   // == IO ERROR
   "Read file error!",
   "Open file failed!",
+  "No space left on device!"
   ""
 };
 

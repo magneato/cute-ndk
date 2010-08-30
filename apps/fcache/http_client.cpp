@@ -141,14 +141,12 @@ int http_client::handle_input(ndk::ndk_handle h)
   {
     if (errno == EWOULDBLOCK)
       return 0;
-    if (this->recv_msg_ok_ == 0)
+    if (this->recv_msg_ok_ && this->response_code_ != 0)
       this->session_desc_ = strerror(errno);
     net_log->error("socket %d error [%s]!", h, strerror(errno));
     return -1;
   }else if (result == 0)
   {
-    if (this->recv_msg_ok_ == 0)
-      this->session_desc_ = strerror(errno);
     net_log->debug("socket %d closed by peer!", 
                    this->peer().get_handle());
     return -1;
@@ -196,8 +194,10 @@ int http_client::handle_close(ndk::ndk_handle h, ndk::reactor_mask m)
   if (m == ndk::event_handler::all_events_mask)
   {
     net_log->error("connection [%d] reset!", h);
-    this->session_desc_ = "Connection Reset";
   }
+  if (this->recv_msg_ok_ == 0 || this->response_code_ == 0)
+    this->session_desc_ = "Connection Reset";
+
   this->destroy();
   return 0;
 }
@@ -317,7 +317,8 @@ int http_client::handle_request(const char *http_header)
   file_info_ptr fileinfo = file_manager::instance()->find(url);
   if (!fileinfo)  
   {
-    handle_pull_file(url, url, this->session_id_, begin_pos, end_pos);
+    this->session_desc_ = "MISS";
+    handle_pull_file(url, url, push_ss.get(), begin_pos, end_pos);
     return 0;
   }
 
@@ -455,6 +456,9 @@ int http_client::response_to_client(int status,
                                     int64_t file_size/* = 0*/,
                                     time_t last_modified_time)
 {
+  net_log->trace("[%d] response to client [%d]",
+                 this->session_id_,
+                 status);
   this->response_code_ = status;
   std::ostringstream os;
   // header

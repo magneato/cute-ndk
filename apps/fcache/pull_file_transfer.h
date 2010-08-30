@@ -31,7 +31,8 @@ class pull_file_transfer : public transfer_agent
     START_TRANSFER    = 1L  << 1
   };
 public:
-  pull_file_transfer(ndk::ndk_handle pull_file_handle,
+  pull_file_transfer(int pull_sid,
+                     ndk::ndk_handle pull_file_handle,
                      int64_t begin_pos,
                      int64_t bytes_to_transfer,
                      int64_t remaind_length);
@@ -62,8 +63,12 @@ protected:
   int read_pipe_buffer();
 
   pipe_buffer *create_pipe_buffer();
+
+  int resume_handler();
 private:
-  int    chunk_id_;
+  int pull_session_id_;
+
+  int chunk_id_;
 
   ndk::ndk_handle pull_file_handle_;
 

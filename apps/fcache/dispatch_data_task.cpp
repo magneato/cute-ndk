@@ -17,15 +17,26 @@ int dispatch_data_task::svc()
   {
     if (this->task_idle_)
     {
+#if 0
       ndk::guard<ndk::thread_mutex> g(this->change_list_mtx_);
       while (this->change_list_.empty())
       {
         // must be a loop
         this->change_list_not_empty_cond_.wait();
       }
+#else
+      ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
+      while (this->dispatch_queue_.empty())
+      {
+        // must be a loop
+        this->dispatch_queue_not_empty_cond_.wait();
+      }
+#endif
     }
 
+#if 0
     this->check_change_list();
+#endif
 
     this->dispatch_data();
   }
@@ -74,18 +85,30 @@ int dispatch_data_task::out_of_bandwidth(dispatch_job *job,
 }
 void dispatch_data_task::push_job(dispatch_job *job)
 {
+#if 0
   ndk::guard<ndk::thread_mutex> g(this->change_list_mtx_);
   this->change_list_.push_back(job);
   this->change_list_not_empty_cond_.signal();
+#else
+  ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
+  this->dispatch_queue_.push_back(job);
+  job->last_check_bandwidth_time_.update();
+  this->dispatch_queue_not_empty_cond_.signal();
+#endif
 }
 void dispatch_data_task::delete_client(int sid)
 {
+#if 0
   dispatch_data_task::dispatch_job *job =
     new dispatch_data_task::dispatch_job(dispatch_data_task::dispatch_job::del_job);
   job->session_id_ = sid;
   ndk::guard<ndk::thread_mutex> g(this->change_list_mtx_);
   this->change_list_.push_back(job);
   this->change_list_not_empty_cond_.signal();
+#else
+  ndk::guard<ndk::thread_mutex> g(this->dispatch_queue_mtx_);
+  this->delete_client_i(sid);
+#endif
 }
 void dispatch_data_task::delete_client_i(int sid)
 {
@@ -109,7 +132,7 @@ void dispatch_data_task::delete_client_i(int sid)
         delete (*itor)->transfer_agent_;
         // add end
       }
-      //(*itor)->client_->transfer_bytes((*itor)->transfer_bytes_);
+      (*itor)->client_->transfer_bytes((*itor)->transfer_bytes_);
       dispatch_log->trace("delete client [%d]", (*itor)->session_id_);
       delete *itor;
       this->dispatch_queue_.erase(itor);
@@ -121,7 +144,7 @@ void dispatch_data_task::dispatch_data(void)
 {
   this->poll_before_.update();
 
-  //this->dispatch_queue_mtx_.acquire();
+  this->dispatch_queue_mtx_.acquire();
 
   int result = 0;
   size_t stopped_count = 0;
@@ -164,7 +187,6 @@ void dispatch_data_task::dispatch_data(void)
       // 
       job->bytes_to_send_per_timep_ -= transfer_bytes;
       job->transfer_bytes_ += transfer_bytes;
-      job->client_->transfer_bytes(job->transfer_bytes_);
 
       if (result < 0 && result != -1)
         job->client_->session_desc(my_strerr(-result));
@@ -198,7 +220,7 @@ LOOP_TAIL:
   else
     this->task_idle_ = 0;
 
-  //this->dispatch_queue_mtx_.release();
+  this->dispatch_queue_mtx_.release();
 
   this->poll_after_.update();
   this->diff_time_ = this->poll_after_ - poll_before_;
@@ -210,7 +232,8 @@ LOOP_TAIL:
 void dispatch_data_task::delete_job_i(dispatch_job *job)
 {
   if (ndk::reactor::instance()->notify(reactor_event_handler::instance(),
-                                       new notify_event(0, job->session_id_)) != 0)
+                                       new notify_event(NOTIFY_DELETE_CLIENT, 
+                                                        job->session_id_)) != 0)
   {
     dispatch_log->error("notify session %d failed [%s]",
                         job->session_id_,

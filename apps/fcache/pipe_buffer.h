@@ -19,7 +19,7 @@
 #include "predefined.h"
 
 #ifdef DUMP_INFO
-# include <ndk/object_malloc_trace.h>
+# include <ndk/object_trace.h>
 #endif
 
 /**
@@ -29,7 +29,7 @@
  */
 class pipe_buffer : public ndk::asynch_handler
 #ifdef DUMP_INFO
-                    , public ndk::object_malloc_trace_mt<pipe_buffer>
+                    , public ndk::object_trace_mt<pipe_buffer>
 #endif
 {
 public:
@@ -79,7 +79,7 @@ public:
   static void dump()
   {
     fprintf(stderr, "\npipe buffer malloc count = %d\n", 
-            ndk::object_malloc_trace_mt<pipe_buffer>::malloc_count());
+            ndk::object_trace_mt<pipe_buffer>::malloc_count());
   }
 #endif
   int chunk_id()
@@ -99,6 +99,9 @@ protected:
 
   //
   size_t buffer_size_;
+
+  //
+  size_t bytes_to_write_;
 
   // buffer chunk.
   char *buffer_;

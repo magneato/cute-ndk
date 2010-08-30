@@ -44,6 +44,7 @@ pull_http_agent::~pull_http_agent()
     this->file_info_->decr_fd_ref();
     this->file_handle_ = NDK_INVALID_HANDLE;
   }
+  this->pull_session_->pulling_agent(0);
   //pull_log->trace("release pull session %d", this->pull_session_->session_id());
   this->pull_session_->release();
 }
@@ -302,7 +303,7 @@ int pull_http_agent::handle_response(void)
       this->recv_buff_->reset();
       result = 0;
     }
-  }else // end of `if (status_code[0] == '2')'
+  }else // end of `if (status_code[0] == '2' && status_code[1] == '0')'
   {
     // 
     int resp_code = ::atoi(status_code);
@@ -386,7 +387,8 @@ int pull_http_agent::handle_content()
       if (end_pos == -1)
         end_pos = this->file_info_->length() - 1;
       this->transfer_agent_ = 
-        new pull_file_transfer(this->get_handle(),
+        new pull_file_transfer(this->pull_session_->session_id(),
+                               this->get_handle(),
                                ps->range_begin_pos(), 
                                end_pos - ps->range_begin_pos() + 1,
                                this->remaind_length_);
@@ -396,6 +398,7 @@ int pull_http_agent::handle_content()
         this->transfer_agent_ = 0;
         return -1;
       }
+      this->pull_session_->pulling_agent(this);
       handle_start_transfer_data(this->transfer_agent_,
                                  ps->session_id(),
                                  ps->output_bdwidth_limit(),
@@ -465,4 +468,15 @@ pipe_buffer *pull_http_agent::create_pipe_buffer(int64_t entity_length,
                                          pbuff_size, 
                                          this->file_info_);
   return pbuffer;
+}
+int pull_http_agent::resume()
+{
+  int result = 
+    this->get_reactor()->resume_handler(this->get_handle());
+  if (result != 0)
+  {
+    pull_log->error("resume handle %d failed!",
+                    this->get_handle());
+  }
+  return result;
 }

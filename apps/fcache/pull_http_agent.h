@@ -52,6 +52,8 @@ protected:
   int handle_response(void);
 
   int handle_content(void);
+
+  int resume();
 protected:
   int timer_id_;
 
