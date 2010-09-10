@@ -46,10 +46,11 @@ namespace ndk
     //
     void release(cache_object *cobj);
 
-    // Inserts or replaces object associated with key into cache.
+    // Inserts object associated with key into cache.
     // Return 0 on success, -1 on failure.
     // Key would be removd from manager if data is NULL.
-    int put(const KEY &key, void *data, 
+    int put(const KEY &key, 
+            void *data, 
             size_t size,
             cache_object_observer *ob,
             cache_object *&cobj);
