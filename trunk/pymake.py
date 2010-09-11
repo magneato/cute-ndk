@@ -176,14 +176,14 @@ def build_c_cpp_makefile(**kargs):
     lines.append("")
     lines.append(r"CALL_CFLAGS := $(C_CFLAGS) $(INCLUDE_DIRS) $(MACROS) $(OPTIM_FLAG)")
     lines.append(r"CPPALL_CFLAGS := $(CPP_CFLAGS) $(INCLUDE_DIRS) $(MACROS) $(OPTIM_FLAG)")
-    lines.append(r"LFLAGS += $(LIB_DIRS) $(LIBS) $(OPTIM_FLAG)")
+    lines.append(r"LFLAGS += $(OPTIM_FLAG) $(LIB_DIRS) $(LIBS)")
     lines.append('')
 
     ## 5. 推导规则
     lines.append(r"all: checkdir $(TARGET)")
     lines.append('')
     lines.append(r"$(TARGET): $(OBJECTS)")
-    lines.append("\t$(Q)$(LINKER) $(strip $(LFLAGS)) -o $@ $(OBJECTS)")
+    lines.append("\t$(Q)$(LINKER) -o $@ $(OBJECTS) $(strip $(LFLAGS))")
     lines.append("\t@ln -sf $(notdir $(TARGET)) $(BIN_DIR)/libnetdkit.so")
     lines.append('')
     lines.append(r"$(OBJECT_DIR)%.o:%.cpp")
