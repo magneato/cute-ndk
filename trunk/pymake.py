@@ -83,6 +83,12 @@ def build_c_cpp_makefile(**kargs):
     include_dirs = []
     dir = raw_input(colored('[c/c++] project include dirs: ', 'green'))
     include_dirs = ['-I ' + d for d in dir.split(' ') if (len) > 0]
+	
+    libs = raw_input(colored('[c/c++] dependent libs: ', 'green'))
+    link_libs = ['-l' + l for l in libs.split(' ') if (len) > 0]
+
+    dir = raw_input(colored('[c/c++] lib dirs: ', 'green'))
+    lib_dirs = ['-L' + l for l in dir.split(' ') if (len) > 0]
 
     content = ""
     ## 1. vars
@@ -93,8 +99,8 @@ def build_c_cpp_makefile(**kargs):
     lines['MAKE'] = 'make'
 
     lines['BIN_DIR'] = './bin'
-    lines['LIBS'] = '-lpthread'
-    lines['LIB_DIRS'] = ''
+    lines['LIBS'] = ' '.join(link_libs)
+    lines['LIB_DIRS'] = ' '.join(lib_dirs)
     lines['LFLAGS']  = '-Wl -shared -fPIC'
     lines['MACROS']  = '-D_REENTRANT -D__USE_POSIX -DNDK_RTLOG#-DNDK_STRACE'
     lines['C_CFLAGS'] = '-Wall -W -Wpointer-arith -pipe -fPIC'
