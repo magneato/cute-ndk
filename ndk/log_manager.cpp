@@ -717,7 +717,6 @@ int log_manager::log(logger *log,
                       max_len_of_one_record - len,
                       format,
                       va_ptr);
-    //va_end(va_ptr);
     if (ret < 0) return -1;
     /**
      * check overflow or not
