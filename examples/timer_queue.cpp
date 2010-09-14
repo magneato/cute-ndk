@@ -52,7 +52,7 @@ public:
     }
     if (this->count_ == 5)//*((int *)arg))
     {
-      ndk::s_reactor::instance()->cancel_timer(this->timer_id(),
+      ndk::reactor::instance()->cancel_timer(this->timer_id(),
                                              0,
                                              0);
       return 0;
@@ -88,15 +88,15 @@ int main ()
 {
   if (ndk::log_manager::instance()->init("logger-cfg.ini") != 0)
     return -1;
-  ndk::timer_queue *tq = new ndk::timer_queue(4096000, 1024);
+  ndk::timer_queue *tq = new ndk::timer_queue(4096000, 102400);
   ndk::epoll_reactor<ndk::reactor_null_token> *ep = new ndk::epoll_reactor<ndk::reactor_null_token>();
   if (ep->open(tq) != 0)
   {
     log->rinfo("epoll reactor open failed");
     return -1;
   }
-  ndk::s_reactor::instance(new ndk::reactor(ep));
-  tq->set_reactor(ndk::s_reactor::instance());
+  ndk::reactor::instance(new ndk::reactor(ep));
+  tq->set_reactor(ndk::reactor::instance());
   srand(::time(0));
   ndk::time_value stv = ndk::time_value::gettimeofday();
   ndk::time_value mtv = ndk::time_value::gettimeofday();
@@ -105,14 +105,14 @@ int main ()
   ndk::date_time().to_str(ts, 32);
   log->rinfo("start time %ld.%ld [%s]", stv.sec(), mtv.msec(), ts);
 #if 1
-  for (int i = 0; i < 1029; ++i)
+  for (int i = 0; i < 10290; ++i)
   {
     char *p = new char[16];
     int r = rand()%10;
     r += '0';
     std::memcpy(p, &r, sizeof(int));
     heart_beat *hb = new heart_beat();
-    int timerid = ndk::s_reactor::instance()->schedule_timer(hb,
+    int timerid = ndk::reactor::instance()->schedule_timer(hb,
                                                            p,
                                                            ndk::time_value(r - '0', 0));
                                                            //ndk::time_value(3, 0));
@@ -128,50 +128,50 @@ int main ()
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "45-10/2 * 23-7/2 * mon-/2";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "12/2 */2 23-30/2 4-10/2,11/2,12- 2,4,7";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "30-10/2 * * * *";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "*/2 */2 * * *";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "* * * * *";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 
   entry = "0 4-6 * * sun";
   arg = new char[128];
   ::memset(arg, 0, 128);
   ::strcpy(arg, entry);
-  timerid = ndk::s_reactor::instance()->crontab(new heart_beat(), arg, entry);
+  timerid = ndk::reactor::instance()->crontab(new heart_beat(), arg, entry);
   log->rinfo("schedule timer[%s] id = %d", entry, timerid);
 #endif
-  ndk::s_reactor::instance()->run_reactor_event_loop();
+  ndk::reactor::instance()->run_reactor_event_loop();
 }

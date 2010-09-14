@@ -57,7 +57,7 @@ int handle_pull_file(const std::string &url,            // client request url.
   if (statfs(g_doc_root.c_str(), &sfs) != -1)
   {
     int64_t free_space = (int64_t)sfs.f_bfree*(int64_t)sfs.f_bsize;
-    if (free_space < 512*1024*1024)
+    if (free_space < 40*1024*1024*1024)
     {
       handle_pull_file_failed("Disk Is Full",
                               psession.get(),
