@@ -351,7 +351,7 @@ int timer_queue::schedule_i(const event_handler *eh,
   node->type(GENERAL_TIMER);
   this->insert(node);
 
-  this->verify_heap();
+  //this->verify_heap();
   return timer_id;
 }
 namespace ndk_help
