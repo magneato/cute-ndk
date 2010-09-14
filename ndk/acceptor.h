@@ -163,9 +163,6 @@ namespace ndk
         sh = new svc_handler();
         if (sh == 0) return -1;
       }
-      // Set the reactor of the newly created <svc_handler> to the same
-      // reactor that this <acceptor> is using.
-      sh->set_reactor(this->get_reactor());
       return 0;
     }
 
@@ -181,6 +178,11 @@ namespace ndk
     virtual inline int activate_svc_handler(svc_handler *sh)
     {
       STRACE("");
+
+      // Set the reactor of the newly created <svc_handler> to the same
+      // reactor that this <acceptor> is using.
+      sh->set_reactor(this->get_reactor());
+
       if (sh->open((void *)this) == -1)
       {
         sh->close(); return -1;
