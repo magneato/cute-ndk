@@ -1096,7 +1096,7 @@ int main(int argc, char *argv[])
     return 0;
   }
   int c = -1;
-  const char *opt = "c:k:I:i:t:p:P:m";
+  const char *opt = "c:k:I:i:t:p:P:mh";
   extern int optind, optopt;
   while ((c = getopt(argc, argv, opt)) != -1)
   {
@@ -1136,6 +1136,7 @@ int main(int argc, char *argv[])
     case ':':
       fprintf(stderr, "Option -%c requires an operand\n", optopt);
       return -1;
+    case 'h':
     case '?':
     default:
       print_usage();
