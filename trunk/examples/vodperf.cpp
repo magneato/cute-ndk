@@ -1085,6 +1085,7 @@ void print_usage()
   printf("  -P  poll type         's'(select) or 'e'(epoll)\n");
   printf("  -p  number            Listen port(default is 8800)\n");
   printf("  -m                    Use multi thread\n");
+  printf("  -h                    Help info\n");
   printf("\n");
   printf("You can use 'watch curl -s http://localhost:port/status' to monitor me.\n\n");
 }
