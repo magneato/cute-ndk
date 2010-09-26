@@ -18,12 +18,10 @@
 #include <ndk/logger.h>
 #include <ndk/epoll_reactor.h>
 #include <ndk/select_reactor.h>
-#include <ndk/mem_pool.h>
 
 //#define m_thread 1
 #define epoll_r 0
 static ndk::logger *net_log = ndk::log_manager::instance()->get_logger("root.httpd");
-ndk::mem_pool g_mem_pool;
 
 class reactor_task : public ndk::task
 {
@@ -56,7 +54,7 @@ public:
   {
     if (this->recv_buff_)
     {
-      g_mem_pool.free(this->recv_buff_->data());
+      delete []this->recv_buff_->data();
       this->recv_buff_->release();
     }
     this->recv_buff_ = 0;
@@ -64,7 +62,7 @@ public:
   virtual int open(void *arg)
   {
     net_log->debug("new connection");
-    char *p = (char *)g_mem_pool.malloc(4096);
+    char *p = new char[4096];
     this->recv_buff_ = new ndk::message_block(p, 4096);
 #ifdef m_thread
     this->set_reactor(s_reactor_task::instance()->get_reactor());
@@ -178,7 +176,6 @@ int main(int argc, char *argv[])
     fprintf(stderr, "init logger failed\n");
     return 0;
   }
-  g_mem_pool.init(10*1024*1024, 20, 100);
 #ifdef epoll_r 
   ndk::epoll_reactor<ndk::reactor_null_token> *r_impl
     = new ndk::epoll_reactor<ndk::reactor_null_token>();
